@@ -44,7 +44,7 @@ import org.osgi.service.metatype.annotations.Designate;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-@Component(property={"sling.filter.scope=request", "service.ranking:Integer=25000"})
+@Component(property={"sling.filter.scope=request", "sling.filter.scope=forward", "service.ranking:Integer=25000"})
 @Designate(ocd=ContentDispositionFilterConfiguration.class)
 public class ContentDispositionFilter implements Filter {
 
