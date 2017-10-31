@@ -69,49 +69,50 @@ public class ContentDispositionFilter implements Filter {
 
     @Activate
     private void activate(ContentDispositionFilterConfiguration configuration) {
-        String[] contentDispositionPathsConfiguredValue = configuration.sling_content_disposition_paths();
 
         Set<String> paths = new HashSet<String>();
         List<String> pfxs = new ArrayList<String>();
         Map<String, Set<String>> contentTypesMap = new HashMap<String, Set<String>>();
 
-        for (String path : contentDispositionPathsConfiguredValue) {
-            path = path.trim();
-            if (path.length() > 0) {
-                int idx = path.indexOf('*');
-                int colonIdx = path.indexOf(":");
-
-                if (colonIdx > -1 && colonIdx < idx) {
-                    // ':'  in paths is not allowed
-                    logger.info("wildcard ('*') in content type is not allowed, but found content type with value '{}'", path.substring(colonIdx));
-                } else {
-                    String p = null;
-                    if (idx >= 0) {
-                        if (idx > 0) {
-                            p = path.substring(0, idx);
-                            pfxs.add(p);
-                        } else {
-                            // we don't allow "*" - that would defeat the
-                            // purpose.
-                            logger.info("catch-all wildcard for paths not allowed.");
-                        }
+        // check for null till we upgrade to DS 1.4 (https://osgi.org/bugzilla/show_bug.cgi?id=208)
+        if (configuration.sling_content_disposition_paths() != null) {
+            for (String path : configuration.sling_content_disposition_paths()) {
+                path = path.trim();
+                if (path.length() > 0) {
+                    int idx = path.indexOf('*');
+                    int colonIdx = path.indexOf(":");
+    
+                    if (colonIdx > -1 && colonIdx < idx) {
+                        // ':'  in paths is not allowed
+                        logger.info("wildcard ('*') in content type is not allowed, but found content type with value '{}'", path.substring(colonIdx));
                     } else {
-                        if (colonIdx > -1) {
-                            p = path.substring(0, colonIdx);
+                        String p = null;
+                        if (idx >= 0) {
+                            if (idx > 0) {
+                                p = path.substring(0, idx);
+                                pfxs.add(p);
+                            } else {
+                                // we don't allow "*" - that would defeat the
+                                // purpose.
+                                logger.info("catch-all wildcard for paths not allowed.");
+                            }
                         } else {
-                            p = path;
+                            if (colonIdx > -1) {
+                                p = path.substring(0, colonIdx);
+                            } else {
+                                p = path;
+                            }
+                            paths.add(p);
                         }
-                        paths.add(p);
+                        if (colonIdx != -1 && p != null) {
+                            Set <String> contentTypes = getContentTypes(path.substring(colonIdx+1));
+                            contentTypesMap.put(p, contentTypes);
+                        }
                     }
-                    if (colonIdx != -1 && p != null) {
-                        Set <String> contentTypes = getContentTypes(path.substring(colonIdx+1));
-                        contentTypesMap.put(p, contentTypes);
-                    }
+    
                 }
-
             }
         }
-
         contentDispositionPaths = paths.isEmpty() ? Collections.<String>emptySet() : paths;
         contentDispositionPathsPfx = pfxs.toArray(new String[pfxs.size()]);
         contentTypesMapping = contentTypesMap.isEmpty()?Collections.<String, Set<String>>emptyMap(): contentTypesMap;
@@ -119,9 +120,9 @@ public class ContentDispositionFilter implements Filter {
         enableContentDispositionAllPaths =  configuration.sling_content_disposition_all_paths();
 
 
-        String[] contentDispostionExcludedPathsArray = configuration.sling_content_disposition_excluded_paths();
+        String[] contentDispositionExcludedPathsArray = configuration.sling_content_disposition_excluded_paths() != null ? configuration.sling_content_disposition_excluded_paths() : new String[]{};
 
-        contentDispositionExcludedPaths = new HashSet<String>(Arrays.asList(contentDispostionExcludedPathsArray));
+        contentDispositionExcludedPaths = new HashSet<String>(Arrays.asList(contentDispositionExcludedPathsArray));
 
         logger.info("Initialized. content disposition paths: {}, content disposition paths-pfx {}, content disposition excluded paths: {}. Enable Content Disposition for all paths is set to {}", new Object[]{
                 contentDispositionPaths, contentDispositionPathsPfx, contentDispositionExcludedPaths, enableContentDispositionAllPaths}
