@@ -206,8 +206,10 @@ public class ContentDispositionFilter implements Filter {
                 String previousContentType = (String) request.getAttribute(ATTRIBUTE_NAME);
 
                 if (previousContentType != null && previousContentType.equals(type)) {
+                    super.setContentType(type);
                     return;
                 }
+                
                 request.setAttribute(ATTRIBUTE_NAME, type);
 
                 String resourcePath = resource.getPath();
