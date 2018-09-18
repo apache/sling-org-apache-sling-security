@@ -34,8 +34,6 @@ import java.util.Hashtable;
 import java.util.List;
 import java.util.Set;
 import java.util.regex.Pattern;
-
-import javax.servlet.Filter;
 import javax.servlet.FilterChain;
 import javax.servlet.FilterConfig;
 import javax.servlet.ServletException;
@@ -43,7 +41,6 @@ import javax.servlet.ServletRequest;
 import javax.servlet.ServletResponse;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
-
 import org.osgi.framework.BundleContext;
 import org.osgi.framework.Constants;
 import org.osgi.framework.ServiceRegistration;
@@ -51,6 +48,7 @@ import org.osgi.service.component.annotations.Activate;
 import org.osgi.service.component.annotations.Component;
 import org.osgi.service.component.annotations.Deactivate;
 import org.osgi.service.http.whiteboard.HttpWhiteboardConstants;
+import org.osgi.service.http.whiteboard.Preprocessor;
 import org.osgi.service.metatype.annotations.AttributeDefinition;
 import org.osgi.service.metatype.annotations.Designate;
 import org.osgi.service.metatype.annotations.ObjectClassDefinition;
@@ -58,14 +56,14 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 @Component(
-        service = Filter.class,
+        service = Preprocessor.class,
         property = {
                 HttpWhiteboardConstants.HTTP_WHITEBOARD_FILTER_PATTERN + "=/",
                 HttpWhiteboardConstants.HTTP_WHITEBOARD_CONTEXT_SELECT + "=(" + HttpWhiteboardConstants.HTTP_WHITEBOARD_CONTEXT_NAME + "=*)"
         }
 )
 @Designate(ocd = ReferrerFilter.Config.class)
-public class ReferrerFilter implements Filter {
+public class ReferrerFilter implements  Preprocessor {
 
     /**
      * Request header providing the clients user agent information used
