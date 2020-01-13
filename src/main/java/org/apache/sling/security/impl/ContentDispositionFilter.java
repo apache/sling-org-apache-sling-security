@@ -51,6 +51,8 @@ public class ContentDispositionFilter implements Filter {
     /** Logger. */
     private final Logger logger = LoggerFactory.getLogger(this.getClass());
 
+    private static final List<String> supportedMethods = Arrays.asList("GET", "HEAD");
+
     /**
      * Set of paths
      */
@@ -81,7 +83,7 @@ public class ContentDispositionFilter implements Filter {
                 if (path.length() > 0) {
                     int idx = path.indexOf('*');
                     int colonIdx = path.indexOf(":");
-    
+
                     if (colonIdx > -1 && colonIdx < idx) {
                         // ':'  in paths is not allowed
                         logger.info("wildcard ('*') in content type is not allowed, but found content type with value '{}'", path.substring(colonIdx));
@@ -109,7 +111,7 @@ public class ContentDispositionFilter implements Filter {
                             contentTypesMap.put(p, contentTypes);
                         }
                     }
-    
+
                 }
             }
         }
@@ -202,14 +204,14 @@ public class ContentDispositionFilter implements Filter {
          */
         @Override
         public void setContentType(String type) {
-            if ("GET".equals(request.getMethod())) {
+            if (supportedMethods.contains(request.getMethod())) {
                 String previousContentType = (String) request.getAttribute(ATTRIBUTE_NAME);
 
                 if (previousContentType != null && previousContentType.equals(type)) {
                     super.setContentType(type);
                     return;
                 }
-                
+
                 request.setAttribute(ATTRIBUTE_NAME, type);
 
                 String resourcePath = resource.getPath();
