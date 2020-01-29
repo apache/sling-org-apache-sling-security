@@ -131,7 +131,7 @@ public class ReferrerFilter implements  Preprocessor {
                 name = "Filter Methods",
                 description = "These methods are filtered by the filter"
         )
-        String[] filter_methods() default {"POST", "PUT", "DELETE"};
+        String[] filter_methods() default {"POST", "PUT", "DELETE", "COPY", "MOVE"};
 
         /**
          * Excluded regexp user agents property
