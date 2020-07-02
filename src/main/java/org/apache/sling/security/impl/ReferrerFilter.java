@@ -93,7 +93,7 @@ public class ReferrerFilter implements  Preprocessor {
 
     @ObjectClassDefinition(
             name = "Apache Sling Referrer Filter",
-            description = "Request filter checking the referrer of modification requests"
+            description = "Request filter checking the referrer of modification requests and denying request with a 403 in case the referrer is not allowed"
     )
     public @interface Config {
 
@@ -111,7 +111,7 @@ public class ReferrerFilter implements  Preprocessor {
          */
         @AttributeDefinition(
                 name = "Allow Hosts",
-                description = "List of allowed hosts for the referrer which are added to the list of default hosts"
+                description = "List of allowed hosts (optionally prefixed by protocol and suffixed by port) for the referrer which are added to the list of default hosts. The default list contains all host names and IPs bound to all NICs found in the system plus \"localhost\", \"127.0.0.1\", \"[::1]\" for protocols \"http\" and \"https\"."
         )
         String[] allow_hosts() default {};
 
@@ -120,7 +120,7 @@ public class ReferrerFilter implements  Preprocessor {
          */
         @AttributeDefinition(
                 name = "Allow Regexp Host",
-                description = "List of allowed regexp for the referrer"
+                description = "List of allowed regular expression for the referrer. Evaluated in addition to the default list and the given allowed hosts (see above)!"
         )
         String[] allow_hosts_regexp() default {};
 
