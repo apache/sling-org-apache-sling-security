@@ -111,7 +111,11 @@ public class ReferrerFilter implements  Preprocessor {
          */
         @AttributeDefinition(
                 name = "Allow Hosts",
-                description = "List of allowed hosts (optionally prefixed by protocol and suffixed by port) for the referrer which are added to the list of default hosts. The default list contains all host names and IPs bound to all NICs found in the system plus \"localhost\", \"127.0.0.1\", \"[::1]\" for protocols \"http\" and \"https\"."
+                description = "List of allowed hosts for the referrer which are added to the list of default hosts. "
+                        + "It is matched against the full referrer URL in the format \"<scheme>://<host>:<port>\". "
+                        + "If port is 0, it is not taken into consideration. The default list contains all host names "
+                        + "and IPs bound to all NICs found in the system plus \"localhost\", \"127.0.0.1\", \"[::1]\" for protocols \"http\" and \"https\". "
+                        + "If given value does not have a \":\" entries for both http and https are transparently generated."
         )
         String[] allow_hosts() default {};
 
@@ -120,7 +124,9 @@ public class ReferrerFilter implements  Preprocessor {
          */
         @AttributeDefinition(
                 name = "Allow Regexp Host",
-                description = "List of allowed regular expression for the referrer. Evaluated in addition to the default list and the given allowed hosts (see above)!"
+                description = "List of allowed regular expression for the referrer. "
+                        + "It is matched against the full referrer URL in the format \"<scheme>://<host>:<port>\". "
+                        + "Evaluated in addition to the default list and the given allowed hosts (see above)!"
         )
         String[] allow_hosts_regexp() default {};
 
