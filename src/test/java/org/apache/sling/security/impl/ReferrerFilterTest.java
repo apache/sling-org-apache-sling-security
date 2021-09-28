@@ -61,7 +61,10 @@ public class ReferrerFilterTest {
 
             @Override
             public String[] allow_hosts_regexp() {
-                return new String[]{"http://([^.]*.)?abshost:80"};
+                return new String[]{
+                    "http://([^.]*.)?abshost:80",
+                    "^app://.+"
+                };
             }
 
             @Override
@@ -132,6 +135,7 @@ public class ReferrerFilterTest {
         Assert.assertEquals(false, filter.isValidRequest(getRequest("http://abshost:9001")));
         Assert.assertEquals(true, filter.isValidRequest(getRequest("http://another.abshost:80")));
         Assert.assertEquals(false, filter.isValidRequest(getRequest("http://yet.another.abshost:80")));
+        Assert.assertEquals(true, filter.isValidRequest(getRequest("app://yet.another.abshost:80")));
     }
 
     @Test

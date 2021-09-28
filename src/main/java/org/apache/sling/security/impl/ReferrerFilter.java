@@ -383,10 +383,6 @@ public class ReferrerFilter implements  Preprocessor {
         if ( referrer.indexOf(":/") == - 1 ) {
             return true;
         }
-        // check for air referrer - which is always allowed
-        if ( referrer.startsWith("app:/") ) {
-            return true;
-        }
 
         final HostInfo info = getHost(referrer);
         if ( info == null ) {
