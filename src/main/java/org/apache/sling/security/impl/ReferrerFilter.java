@@ -383,6 +383,10 @@ public class ReferrerFilter implements  Preprocessor {
         if ( referrer.indexOf(":/") == - 1 ) {
             return true;
         }
+        //invalid referrer
+        if("?://".equals(referrer)){
+            return false;
+        }
 
         final HostInfo info = getHost(referrer);
         if ( info == null ) {
