@@ -136,6 +136,7 @@ public class ReferrerFilterTest {
         Assert.assertEquals(true, filter.isValidRequest(getRequest("http://another.abshost:80")));
         Assert.assertEquals(false, filter.isValidRequest(getRequest("http://yet.another.abshost:80")));
         Assert.assertEquals(true, filter.isValidRequest(getRequest("app://yet.another.abshost:80")));
+        Assert.assertEquals(false, filter.isValidRequest(getRequest("?://")));
     }
 
     @Test

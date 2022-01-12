@@ -343,7 +343,7 @@ public class ReferrerFilter implements  Preprocessor {
 
     HostInfo getHost(final String referrer) {
         final int startPos = referrer.indexOf("://") + 3;
-        if ( startPos == 2 ) {
+        if ( startPos == 2 || startPos == referrer.length() ) {
             // we consider this illegal
             return null;
         }
