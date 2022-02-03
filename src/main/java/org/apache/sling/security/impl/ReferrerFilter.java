@@ -58,7 +58,6 @@ import org.slf4j.LoggerFactory;
 @Component(
         service = Preprocessor.class,
         property = {
-                HttpWhiteboardConstants.HTTP_WHITEBOARD_FILTER_PATTERN + "=/",
                 HttpWhiteboardConstants.HTTP_WHITEBOARD_CONTEXT_SELECT + "=(" + HttpWhiteboardConstants.HTTP_WHITEBOARD_CONTEXT_NAME + "=*)"
         }
 )
