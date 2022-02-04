@@ -44,7 +44,14 @@ import org.osgi.service.metatype.annotations.Designate;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-@Component(property={"sling.filter.scope=request", "sling.filter.scope=forward", "service.ranking:Integer=25000"})
+@Component(
+    service = Filter.class,
+    property={
+        "sling.filter.scope=request",
+        "sling.filter.scope=forward",
+        "service.ranking:Integer=25000"
+    }
+)
 @Designate(ocd=ContentDispositionFilterConfiguration.class)
 public class ContentDispositionFilter implements Filter {
 
@@ -56,21 +63,21 @@ public class ContentDispositionFilter implements Filter {
     /**
      * Set of paths
      */
-    Set<String> contentDispositionPaths;
+    final Set<String> contentDispositionPaths;
 
     /**
      * Array of prefixes of paths
      */
-    private String[] contentDispositionPathsPfx;
+    private final String[] contentDispositionPathsPfx;
 
     Set<String> contentDispositionExcludedPaths;
 
-    private Map<String, Set<String>> contentTypesMapping;
+    private final Map<String, Set<String>> contentTypesMapping;
 
-    private boolean enableContentDispositionAllPaths;
+    private final boolean enableContentDispositionAllPaths;
 
     @Activate
-    private void activate(ContentDispositionFilterConfiguration configuration) {
+    public ContentDispositionFilter(final ContentDispositionFilterConfiguration configuration) {
 
         Set<String> paths = new HashSet<String>();
         List<String> pfxs = new ArrayList<String>();

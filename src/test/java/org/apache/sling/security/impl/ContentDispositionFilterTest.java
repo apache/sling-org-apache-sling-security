@@ -30,7 +30,6 @@ import org.jmock.Expectations;
 import org.jmock.Mockery;
 import org.jmock.integration.junit4.JUnit4Mockery;
 import org.junit.Assert;
-import org.junit.Before;
 import org.junit.Test;
 
 import junitx.util.PrivateAccessor;
@@ -44,11 +43,6 @@ public class ContentDispositionFilterTest {
 
     private static final String JCR_CONTENT_LEAF = "jcr:content";
 
-    @Before
-    public void setUp() {
-        contentDispositionFilter = new ContentDispositionFilter();
-    }
-    
     /**
      * Implementation of the annotation class used for the configuration of the ContentDispositionFilter.
      * Unfortunately there is no way to hide the compiler warning: http://stackoverflow.com/a/13261789/5155923
@@ -87,10 +81,6 @@ public class ContentDispositionFilterTest {
         }
     }
 
-    private void callActivateWithConfiguration(String[] paths) throws Throwable {
-        callActivateWithConfiguration(paths, new String[]{});
-    }
-
     private void callActivateWithConfiguration(String[] paths, String[] excludedPaths) throws Throwable {
         callActivateWithConfiguration(paths, excludedPaths, false);
     }
@@ -98,7 +88,7 @@ public class ContentDispositionFilterTest {
 
     private void callActivateWithConfiguration(String[] paths, String[] excludedPaths, boolean enableForAllPaths) throws Throwable {
         ContentDispositionFilterConfiguration configuration = new Configuration(paths, excludedPaths, enableForAllPaths);
-        PrivateAccessor.invoke(contentDispositionFilter,"activate",  new Class[]{ContentDispositionFilterConfiguration.class},new Object[]{configuration});
+        contentDispositionFilter = new ContentDispositionFilter(configuration);
     }
 
     @SuppressWarnings("unchecked")
@@ -520,7 +510,7 @@ public class ContentDispositionFilterTest {
         final SlingHttpServletResponse response = context.mock(SlingHttpServletResponse.class);
         final Resource resource = context.mock(Resource.class, "resource" );
         final ValueMap properties = context.mock(ValueMap.class);
-        contentDispositionFilter = new ContentDispositionFilter();
+
         callActivateWithConfiguration(new String[]{"/content/usergenerated:text/html,text/plain"}, new String[]{""});
 
         final AtomicInteger counter =  new AtomicInteger();
@@ -793,7 +783,7 @@ public class ContentDispositionFilterTest {
         final SlingHttpServletResponse response = context.mock(SlingHttpServletResponse.class);
         final Resource resource = context.mock(Resource.class, "resource" );
         final ValueMap properties = context.mock(ValueMap.class);
-        contentDispositionFilter = new ContentDispositionFilter();
+
         callActivateWithConfiguration(new String[]{"/content/usergenerated"}, new String[]{""}, false);
 
         final AtomicInteger counter =  new AtomicInteger();
@@ -1173,7 +1163,7 @@ public class ContentDispositionFilterTest {
     }
     @Test
     public void test_isJcrData1() throws Throwable {
-        contentDispositionFilter = new ContentDispositionFilter();
+        callActivateWithConfiguration(new String[]{"/content/usergenerated"}, new String[]{"/content/usergenerated"});
         final SlingHttpServletRequest request = context.mock(SlingHttpServletRequest.class);
         final SlingHttpServletResponse response = context.mock(SlingHttpServletResponse.class);
         final Resource resource = null;
@@ -1194,7 +1184,7 @@ public class ContentDispositionFilterTest {
 
     @Test
     public void test_isJcrData2() throws Throwable {
-        contentDispositionFilter = new ContentDispositionFilter();
+        callActivateWithConfiguration(new String[]{"/content/usergenerated"}, new String[]{"/content/usergenerated"});
         final SlingHttpServletRequest request = context.mock(SlingHttpServletRequest.class);
         final SlingHttpServletResponse response = context.mock(SlingHttpServletResponse.class);
         final Resource resource = context.mock(Resource.class);
@@ -1225,7 +1215,7 @@ public class ContentDispositionFilterTest {
 
     @Test
     public void test_isJcrData3() throws Throwable {
-        contentDispositionFilter = new ContentDispositionFilter();
+        callActivateWithConfiguration(new String[]{"/content/usergenerated"}, new String[]{"/content/usergenerated"});
         final SlingHttpServletRequest request = context.mock(SlingHttpServletRequest.class);
         final SlingHttpServletResponse response = context.mock(SlingHttpServletResponse.class);
 
@@ -1254,7 +1244,7 @@ public class ContentDispositionFilterTest {
 
     @Test
     public void test_isJcrData4() throws Throwable {
-        contentDispositionFilter = new ContentDispositionFilter();
+        callActivateWithConfiguration(new String[]{"/content/usergenerated"}, new String[]{"/content/usergenerated"});
         final SlingHttpServletRequest request = context.mock(SlingHttpServletRequest.class);
         final SlingHttpServletResponse response = context.mock(SlingHttpServletResponse.class);
 
@@ -1289,7 +1279,7 @@ public class ContentDispositionFilterTest {
 
     @Test
     public void test_isJcrData5() throws Throwable {
-        contentDispositionFilter = new ContentDispositionFilter();
+        callActivateWithConfiguration(new String[]{"/content/usergenerated"}, new String[]{"/content/usergenerated"});
         final SlingHttpServletRequest request = context.mock(SlingHttpServletRequest.class);
         final SlingHttpServletResponse response = context.mock(SlingHttpServletResponse.class);
 
@@ -1325,7 +1315,7 @@ public class ContentDispositionFilterTest {
 
     @Test
     public void test_isJcrData6() throws Throwable {
-        contentDispositionFilter = new ContentDispositionFilter();
+        callActivateWithConfiguration(new String[]{"/content/usergenerated"}, new String[]{"/content/usergenerated"});
         final SlingHttpServletRequest request = context.mock(SlingHttpServletRequest.class);
         final SlingHttpServletResponse response = context.mock(SlingHttpServletResponse.class);
 
@@ -1351,7 +1341,7 @@ public class ContentDispositionFilterTest {
 
     @Test
     public void test_isJcrData7() throws Throwable {
-        contentDispositionFilter = new ContentDispositionFilter();
+        callActivateWithConfiguration(new String[]{"/content/usergenerated"}, new String[]{"/content/usergenerated"});
         final SlingHttpServletRequest request = context.mock(SlingHttpServletRequest.class);
         final SlingHttpServletResponse response = context.mock(SlingHttpServletResponse.class);
         final Resource child = context.mock(Resource.class, "child");

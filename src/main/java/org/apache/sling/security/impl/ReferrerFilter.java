@@ -27,10 +27,8 @@ import java.net.SocketException;
 import java.net.URL;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Dictionary;
 import java.util.Enumeration;
 import java.util.HashSet;
-import java.util.Hashtable;
 import java.util.List;
 import java.util.Set;
 import java.util.regex.Pattern;
@@ -41,12 +39,8 @@ import javax.servlet.ServletRequest;
 import javax.servlet.ServletResponse;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
-import org.osgi.framework.BundleContext;
-import org.osgi.framework.Constants;
-import org.osgi.framework.ServiceRegistration;
 import org.osgi.service.component.annotations.Activate;
 import org.osgi.service.component.annotations.Component;
-import org.osgi.service.component.annotations.Deactivate;
 import org.osgi.service.http.whiteboard.HttpWhiteboardConstants;
 import org.osgi.service.http.whiteboard.Preprocessor;
 import org.osgi.service.metatype.annotations.AttributeDefinition;
@@ -58,7 +52,10 @@ import org.slf4j.LoggerFactory;
 @Component(
         service = Preprocessor.class,
         property = {
-                HttpWhiteboardConstants.HTTP_WHITEBOARD_CONTEXT_SELECT + "=(" + HttpWhiteboardConstants.HTTP_WHITEBOARD_CONTEXT_NAME + "=*)"
+                HttpWhiteboardConstants.HTTP_WHITEBOARD_CONTEXT_SELECT + "=(" + HttpWhiteboardConstants.HTTP_WHITEBOARD_CONTEXT_NAME + "=*)",
+                "felix.webconsole.label=slingreferrerfilter",
+                "felix.webconsole.title=Sling Referrer Filter",
+                "felix.webconsole.configprinter.modes=always"
         }
 )
 @Designate(ocd = ReferrerFilter.Config.class)
@@ -152,21 +149,19 @@ public class ReferrerFilter implements  Preprocessor {
     /**
      * Do we allow empty referrer?
      */
-    private boolean allowEmpty;
+    private final boolean allowEmpty;
 
     /** Allowed uri referrers */
-    private URL[] allowedUriReferrers;
+    private final URL[] allowedUriReferrers;
 
     /** Allowed regexp referrers */
-    private Pattern[] allowedRegexReferrers;
+    private final Pattern[] allowedRegexReferrers;
 
     /** Methods to be filtered. */
-    private String[] filterMethods;
+    private final String[] filterMethods;
 
     /** Paths to be excluded */
-    private Pattern[] excludedRegexUserAgents;
-
-    private ServiceRegistration<Object> configPrinterRegistration;
+    private final Pattern[] excludedRegexUserAgents;
 
     /**
      * Create a default list of referrers
@@ -253,7 +248,7 @@ public class ReferrerFilter implements  Preprocessor {
     }
 
     @Activate
-    protected void activate(final BundleContext context, Config config) {
+    public ReferrerFilter(final Config config) {
         this.allowEmpty = config.allow_empty();
         this.allowedRegexReferrers = createRegexPatterns(config.allow_hosts_regexp());
         this.excludedRegexUserAgents = createRegexPatterns(config.exclude_agents_regexp());
@@ -264,39 +259,22 @@ public class ReferrerFilter implements  Preprocessor {
         }
         this.allowedUriReferrers = createReferrerUrls(allowUriReferrers);
 
-        this.filterMethods = config.filter_methods();
-        if (this.filterMethods != null
-            &&this.filterMethods.length == 1
-            && (this.filterMethods[0] == null || this.filterMethods[0].trim().length() == 0)) {
-            this.filterMethods = null;
-        }
-        if ( this.filterMethods != null ) {
-            for(int i=0; i<filterMethods.length; i++) {
-                filterMethods[i] = filterMethods[i].toUpperCase();
+        String[] methods = config.filter_methods();
+        if ( methods != null ) {
+            final List<String> values = new ArrayList<>();
+            for(final String m : methods) {
+                if ( m != null && m.trim().length() > 0 ) {
+                    values.add(m.trim().toUpperCase());
+                }
+            }
+            if ( values.isEmpty() ) {
+                methods = null;
+            } else {
+                methods = values.toArray(new String[values.size()]);
             }
         }
-        this.configPrinterRegistration = registerConfigPrinter(context);
+        this.filterMethods = methods;
     }
-
-    @Deactivate
-    protected void deactivate() {
-        this.configPrinterRegistration.unregister();
-    }
-
-    private ServiceRegistration<Object> registerConfigPrinter(BundleContext bundleContext) {
-        final ConfigurationPrinter cfgPrinter = new ConfigurationPrinter();
-        final Dictionary<String, String> serviceProps = new Hashtable<>();
-        serviceProps.put(Constants.SERVICE_DESCRIPTION,
-            "Apache Sling Referrer Filter Configuration Printer");
-        serviceProps.put(Constants.SERVICE_VENDOR, "The Apache Software Foundation");
-        serviceProps.put("felix.webconsole.label", "slingreferrerfilter");
-        serviceProps.put("felix.webconsole.title", "Sling Referrer Filter");
-        serviceProps.put("felix.webconsole.configprinter.modes", "always");
-
-       return bundleContext.registerService(Object.class,
-                cfgPrinter, serviceProps);
-    }
-
 
     private boolean isModification(final HttpServletRequest req) {
         final String method = req.getMethod();
@@ -487,23 +465,19 @@ public class ReferrerFilter implements  Preprocessor {
                 && !isExcludedRegexUserAgent(userAgent);
     }
 
-    public class ConfigurationPrinter {
-
-        /**
-         * Print out the allowedReferrers
-         * @see org.apache.felix.webconsole.ConfigurationPrinter#printConfiguration(java.io.PrintWriter)
-         * @param pw the PrintWriter object
-         */
-        public void printConfiguration(final PrintWriter pw) {
-            pw.println("Current Apache Sling Referrer Filter Allowed Referrers:");
-            pw.println();
-            for (final URL url : allowedUriReferrers) {
-                pw.println(url.toString());
-            }
-            for (final Pattern pattern : allowedRegexReferrers) {
-                pw.println(pattern.toString());
-            }
+    /**
+     * Print out the allowedReferrers
+     * @see org.apache.felix.webconsole.ConfigurationPrinter#printConfiguration(java.io.PrintWriter)
+     * @param pw the PrintWriter object
+     */
+    public void printConfiguration(final PrintWriter pw) {
+        pw.println("Current Apache Sling Referrer Filter Allowed Referrers:");
+        pw.println();
+        for (final URL url : allowedUriReferrers) {
+            pw.println(url.toString());
         }
-
+        for (final Pattern pattern : allowedRegexReferrers) {
+            pw.println(pattern.toString());
+        }
     }
 }
