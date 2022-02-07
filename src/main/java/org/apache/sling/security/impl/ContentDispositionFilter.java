@@ -55,7 +55,9 @@ import org.slf4j.LoggerFactory;
 @Designate(ocd=ContentDispositionFilterConfiguration.class)
 public class ContentDispositionFilter implements Filter {
 
-    /** Logger. */
+    /**
+     * Logger.
+     */
     private final Logger logger = LoggerFactory.getLogger(this.getClass());
 
     private static final List<String> supportedMethods = Arrays.asList("GET", "HEAD");
@@ -79,9 +81,9 @@ public class ContentDispositionFilter implements Filter {
     @Activate
     public ContentDispositionFilter(final ContentDispositionFilterConfiguration configuration) {
 
-        Set<String> paths = new HashSet<String>();
-        List<String> pfxs = new ArrayList<String>();
-        Map<String, Set<String>> contentTypesMap = new HashMap<String, Set<String>>();
+        Set<String> paths = new HashSet<>();
+        List<String> pfxs = new ArrayList<>();
+        Map<String, Set<String>> contentTypesMap = new HashMap<>();
 
         // check for null till we upgrade to DS 1.4 (https://osgi.org/bugzilla/show_bug.cgi?id=208)
         if (configuration.sling_content_disposition_paths() != null) {
@@ -114,7 +116,7 @@ public class ContentDispositionFilter implements Filter {
                             paths.add(p);
                         }
                         if (colonIdx != -1 && p != null) {
-                            Set <String> contentTypes = getContentTypes(path.substring(colonIdx+1));
+                            Set<String> contentTypes = getContentTypes(path.substring(colonIdx + 1));
                             contentTypesMap.put(p, contentTypes);
                         }
                     }
@@ -122,25 +124,24 @@ public class ContentDispositionFilter implements Filter {
                 }
             }
         }
-        contentDispositionPaths = paths.isEmpty() ? Collections.<String>emptySet() : paths;
-        contentDispositionPathsPfx = pfxs.toArray(new String[pfxs.size()]);
-        contentTypesMapping = contentTypesMap.isEmpty()?Collections.<String, Set<String>>emptyMap(): contentTypesMap;
+        contentDispositionPaths = paths.isEmpty() ? Collections.emptySet() : paths;
+        contentDispositionPathsPfx = pfxs.toArray(new String[0]);
+        contentTypesMapping = contentTypesMap.isEmpty() ? Collections.emptyMap() : contentTypesMap;
 
-        enableContentDispositionAllPaths =  configuration.sling_content_disposition_all_paths();
+        enableContentDispositionAllPaths = configuration.sling_content_disposition_all_paths();
 
 
         String[] contentDispositionExcludedPathsArray = configuration.sling_content_disposition_excluded_paths() != null ? configuration.sling_content_disposition_excluded_paths() : new String[]{};
 
-        contentDispositionExcludedPaths = new HashSet<String>(Arrays.asList(contentDispositionExcludedPathsArray));
+        contentDispositionExcludedPaths = new HashSet<>(Arrays.asList(contentDispositionExcludedPathsArray));
 
-        logger.info("Initialized. content disposition paths: {}, content disposition paths-pfx {}, content disposition excluded paths: {}. Enable Content Disposition for all paths is set to {}", new Object[]{
-                contentDispositionPaths, contentDispositionPathsPfx, contentDispositionExcludedPaths, enableContentDispositionAllPaths}
-        );
+        logger.info("Initialized. content disposition paths: {}, content disposition paths-pfx {}, content disposition excluded paths: {}. Enable Content Disposition for all paths is set to {}",
+                contentDispositionPaths, contentDispositionPathsPfx, contentDispositionExcludedPaths, enableContentDispositionAllPaths);
     }
 
 
     @Override
-    public void init(FilterConfig filterConfig) throws ServletException {
+    public void init(FilterConfig filterConfig) {
         // nothing to do
     }
 
@@ -151,7 +152,7 @@ public class ContentDispositionFilter implements Filter {
 
     @Override
     public void doFilter(ServletRequest request, ServletResponse response,
-            FilterChain chain) throws IOException, ServletException {
+                         FilterChain chain) throws IOException, ServletException {
 
         final SlingHttpServletRequest slingRequest = (SlingHttpServletRequest) request;
         final SlingHttpServletResponse slingResponse = (SlingHttpServletResponse) response;
@@ -164,12 +165,10 @@ public class ContentDispositionFilter implements Filter {
     //---------- PRIVATE METHODS ---------
 
     private static Set<String> getContentTypes(String contentTypes) {
-        Set<String> contentTypesSet = new HashSet<String>();
+        Set<String> contentTypesSet = new HashSet<>();
         if (contentTypes != null && contentTypes.length() > 0) {
             String[] contentTypesArray = contentTypes.split(",");
-            for (String contentType : contentTypesArray) {
-                contentTypesSet.add(contentType);
-            }
+            Collections.addAll(contentTypesSet, contentTypesArray);
         }
         return contentTypesSet;
     }
@@ -189,7 +188,9 @@ public class ContentDispositionFilter implements Filter {
         static final String ATTRIBUTE_NAME =
                 "org.apache.sling.security.impl.ContentDispositionFilter.RewriterResponse.contentType";
 
-        /** The current request. */
+        /**
+         * The current request.
+         */
         private final SlingHttpServletRequest request;
 
         private final Resource resource;
@@ -233,7 +234,7 @@ public class ContentDispositionFilter implements Filter {
                         if (contentDispositionPaths.contains(resourcePath)) {
 
                             if (contentTypesMapping.containsKey(resourcePath)) {
-                                Set <String> exceptions = contentTypesMapping.get(resourcePath);
+                                Set<String> exceptions = contentTypesMapping.get(resourcePath);
                                 if (!exceptions.contains(type)) {
                                     contentDispositionAdded = setContentDisposition(resource);
                                 }
@@ -245,7 +246,7 @@ public class ContentDispositionFilter implements Filter {
                             for (String path : contentDispositionPathsPfx) {
                                 if (resourcePath.startsWith(path)) {
                                     if (contentTypesMapping.containsKey(path)) {
-                                        Set <String> exceptions = contentTypesMapping.get(path);
+                                        Set<String> exceptions = contentTypesMapping.get(path);
                                         if (!exceptions.contains(type)) {
                                             setContentDisposition(resource);
                                             break;
@@ -264,7 +265,7 @@ public class ContentDispositionFilter implements Filter {
             super.setContentType(type);
         }
 
-      //---------- PRIVATE METHODS ---------
+        //---------- PRIVATE METHODS ---------
 
         private boolean setContentDisposition(Resource resource) {
             boolean contentDispositionAdded = false;
@@ -275,17 +276,17 @@ public class ContentDispositionFilter implements Filter {
             return contentDispositionAdded;
         }
 
-        private boolean isJcrData(Resource resource){
+        private boolean isJcrData(Resource resource) {
             boolean jcrData = false;
-            if (resource!= null) {
+            if (resource != null) {
                 ValueMap props = resource.adaptTo(ValueMap.class);
-                if (props != null && props.containsKey(PROP_JCR_DATA) ) {
+                if (props != null && props.containsKey(PROP_JCR_DATA)) {
                     jcrData = true;
                 } else {
                     Resource jcrContent = resource.getChild(JCR_CONTENT_LEAF);
-                    if (jcrContent!= null) {
+                    if (jcrContent != null) {
                         props = jcrContent.adaptTo(ValueMap.class);
-                        if (props != null && props.containsKey(PROP_JCR_DATA) ) {
+                        if (props != null && props.containsKey(PROP_JCR_DATA)) {
                             jcrData = true;
                         }
                     }
