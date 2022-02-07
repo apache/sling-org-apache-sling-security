@@ -16,22 +16,16 @@
  */
 package org.apache.sling.security.impl;
 
-import static org.mockito.Matchers.any;
-import static org.mockito.Mockito.doNothing;
-import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import java.lang.annotation.Annotation;
-import java.util.Dictionary;
 
 import javax.servlet.http.HttpServletRequest;
 
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
-import org.osgi.framework.BundleContext;
-import org.osgi.framework.ServiceRegistration;
 
 public class ReferrerFilterTest {
 
@@ -39,10 +33,6 @@ public class ReferrerFilterTest {
 
     @Before
     public void setup() {
-        filter = new ReferrerFilter();
-        final BundleContext bundleCtx = mock(BundleContext.class);
-        final ServiceRegistration reg = mock(ServiceRegistration.class);
-
         ReferrerFilter.Config config = new ReferrerFilter.Config() {
             @Override
             public Class<? extends Annotation> annotationType() {
@@ -77,10 +67,7 @@ public class ReferrerFilterTest {
                 return new String[]{"[a-zA-Z]*\\/[0-9]*\\.[0-9]*;Some-Agent\\s.*"};
             }
         };
-
-        doReturn(reg).when(bundleCtx).registerService(any(String[].class), any(), any(Dictionary.class));
-        doNothing().when(reg).unregister();
-        filter.activate(bundleCtx, config);
+        filter = new ReferrerFilter(config);
     }
 
     @Test
