@@ -144,6 +144,15 @@ public class ReferrerFilter implements Preprocessor {
                 description = "List of regexp for user agents not to check the referrer"
         )
         String[] exclude_agents_regexp() default {};
+
+        /**
+         * Excluded the configured paths from the referrer check
+         */
+        @AttributeDefinition(
+                name = "Exclude Paths",
+                description = "List of paths for which not to check the referrer"
+        )
+        String[] exclude_paths() default {};
     }
 
 
@@ -161,8 +170,11 @@ public class ReferrerFilter implements Preprocessor {
     /** Methods to be filtered. */
     private final String[] filterMethods;
 
-    /** Paths to be excluded */
+    /** User agents to be excluded */
     private final Pattern[] excludedRegexUserAgents;
+
+    /** Paths to be excluded */
+    private final String[] excludedPaths;
 
     /**
      * Create a default list of referrers
@@ -253,6 +265,7 @@ public class ReferrerFilter implements Preprocessor {
         this.allowEmpty = config.allow_empty();
         this.allowedRegexReferrers = createRegexPatterns(config.allow_hosts_regexp());
         this.excludedRegexUserAgents = createRegexPatterns(config.exclude_agents_regexp());
+        this.excludedPaths = config.exclude_paths();
 
         final Set<String> allowUriReferrers = getDefaultAllowedReferrers();
         if (config.allow_hosts() != null) {
@@ -350,6 +363,11 @@ public class ReferrerFilter implements Preprocessor {
     }
 
     boolean isValidRequest(final HttpServletRequest request) {
+        // ignore referrer check if the request matches any of the configured excluded path.
+        if (isExcludedPath(request)) {
+            return true;
+        }
+        
         final String referrer = request.getHeader("referer");
         // check for missing/empty referrer
         if (referrer == null || referrer.trim().length() == 0) {
@@ -430,6 +448,25 @@ public class ReferrerFilter implements Preprocessor {
         return false;
     }
 
+    /**
+     * Returns <code>true</code> if the path info associated with the given request is contained in the configured excluded paths.
+     *
+     * @param request The request to check
+     * @return <code>true</code> if the path-info associate with the given request is contained in the configured excluded paths.
+     */
+    private boolean isExcludedPath(HttpServletRequest request) {
+        if (this.excludedPaths == null) {
+            return false;
+        }
+        String path = request.getPathInfo();
+        for (final String excludedPath : this.excludedPaths) {
+            if (excludedPath != null && excludedPath.equals(path)) {
+                return true;
+            }
+        }
+        return false;
+    }
+    
     /**
      * Returns <code>true</code> if the provided user agent matches any present exclusion regexp pattern.
      *
