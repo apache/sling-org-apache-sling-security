@@ -35,7 +35,16 @@ public class ReferrerFilterTest {
 
     @Before
     public void setup() {
-        ReferrerFilter.Config config = new ReferrerFilter.Config() {
+        ReferrerFilter.Config config = createConfiguration(false, new String[]{"relhost"}, 
+                new String[]{"http://([^.]*.)?abshost:80", "^app://.+"}, 
+                new String[]{"[a-zA-Z]*\\/[0-9]*\\.[0-9]*;Some-Agent\\s.*"}, 
+                new String[] {"/test_path"});
+        filter = new ReferrerFilter(config);
+    }
+
+    private static ReferrerFilter.Config createConfiguration(boolean allowEmpty, String[] allowHosts, String[] allowHostsRexexp, 
+                                                             String[] excludeAgentsRegexp, String[] excludePaths) {
+        return new ReferrerFilter.Config() {
             @Override
             public Class<? extends Annotation> annotationType() {
                 return null;
@@ -43,20 +52,17 @@ public class ReferrerFilterTest {
 
             @Override
             public boolean allow_empty() {
-                return false;
+                return allowEmpty;
             }
 
             @Override
             public String[] allow_hosts() {
-                return new String[]{"relhost"};
+                return allowHosts;
             }
 
             @Override
             public String[] allow_hosts_regexp() {
-                return new String[]{
-                    "http://([^.]*.)?abshost:80",
-                    "^app://.+"
-                };
+                return allowHostsRexexp;
             }
 
             @Override
@@ -66,15 +72,14 @@ public class ReferrerFilterTest {
 
             @Override
             public String[] exclude_agents_regexp() {
-                return new String[]{"[a-zA-Z]*\\/[0-9]*\\.[0-9]*;Some-Agent\\s.*"};
+                return excludeAgentsRegexp;
             }
 
             @Override
             public String[] exclude_paths() {
-                return new String[] {"/test_path"};
+                return excludePaths;
             }
-        };
-        filter = new ReferrerFilter(config);
+        }; 
     }
 
     @Test
@@ -150,6 +155,26 @@ public class ReferrerFilterTest {
         
         assertTrue(filter.isValidRequest(getRequest("relative", null, "/test_path")));
         assertTrue(filter.isValidRequest(getRequest("http://yet.another.abshost:80", null, "/test_path")));
+    }
+
+    @Test
+    public void testExcludedPathNull() {
+        ReferrerFilter rf = new ReferrerFilter(createConfiguration(false, null, null, null, null));
+        
+        assertFalse(rf.isValidRequest(getRequest(null, null, "/test_path")));
+        assertFalse(rf.isValidRequest(getRequest(null, null, "/test_path/subtree")));
+        assertFalse(rf.isValidRequest(getRequest(null, null, "/test_path_sibling")));
+
+        assertTrue(rf.isValidRequest(getRequest("relative", null, "/test_path")));
+        assertFalse(rf.isValidRequest(getRequest("http://yet.another.abshost:80", null, "/test_path")));
+    }
+    
+    @Test
+    public void testAllowEmpty() {
+        ReferrerFilter rf = new ReferrerFilter(createConfiguration(true, null, null, null, null));
+
+        assertTrue(rf.isValidRequest(getRequest(null, null, "/test_path")));
+        assertTrue(rf.isValidRequest(getRequest("", null, null)));
     }
 
     @Test

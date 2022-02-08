@@ -455,6 +455,9 @@ public class ReferrerFilter implements Preprocessor {
      * @return <code>true</code> if the path-info associate with the given request is contained in the configured excluded paths.
      */
     private boolean isExcludedPath(HttpServletRequest request) {
+        if (this.excludedPaths == null) {
+            return false;
+        }
         String path = request.getPathInfo();
         for (final String excludedPath : this.excludedPaths) {
             if (excludedPath.equals(path)) {
