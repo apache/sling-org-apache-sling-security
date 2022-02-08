@@ -38,7 +38,7 @@ public class ReferrerFilterTest {
         ReferrerFilter.Config config = createConfiguration(false, new String[]{"relhost"}, 
                 new String[]{"http://([^.]*.)?abshost:80", "^app://.+"}, 
                 new String[]{"[a-zA-Z]*\\/[0-9]*\\.[0-9]*;Some-Agent\\s.*"}, 
-                new String[] {"/test_path"});
+                new String[] {null, "/test_path"});
         filter = new ReferrerFilter(config);
     }
 

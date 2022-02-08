@@ -460,7 +460,7 @@ public class ReferrerFilter implements Preprocessor {
         }
         String path = request.getPathInfo();
         for (final String excludedPath : this.excludedPaths) {
-            if (excludedPath.equals(path)) {
+            if (excludedPath != null && excludedPath.equals(path)) {
                 return true;
             }
         }
