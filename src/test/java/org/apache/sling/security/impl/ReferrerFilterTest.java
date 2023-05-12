@@ -55,6 +55,11 @@ public class ReferrerFilterTest {
             }
 
             @Override
+            public boolean bypass_with_origin() {
+                return true;
+            }
+
+            @Override
             public String[] allow_hosts() {
                 return new String[]{"relhost"};
             }
@@ -136,6 +141,13 @@ public class ReferrerFilterTest {
         Assert.assertEquals(true, filter.isValidRequest(getRequest("http://another.abshost:80")));
         Assert.assertEquals(false, filter.isValidRequest(getRequest("http://yet.another.abshost:80")));
         Assert.assertEquals(true, filter.isValidRequest(getRequest("app://yet.another.abshost:80")));
+    }
+
+    @Test
+    public void testAllowsWithOrigin(){
+        HttpServletRequest request = getRequest(null);
+        when(request.getHeader("origin")).thenReturn("http://sling.apache.org");
+        Assert.assertEquals(true, filter.isValidRequest(request));
     }
 
     @Test

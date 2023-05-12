@@ -107,6 +107,12 @@ public class ReferrerFilter implements  Preprocessor {
         boolean allow_empty() default false;
 
         /**
+         * Bypass the referrer check when evaluating requests with an Origin header.
+         */
+        @AttributeDefinition(name = "Bypass with Origin", description = "Bypass the referrer check when evaluating requests with an Origin header. Another check should be performed to validate the CORS Headers")
+        boolean bypass_with_origin() default false;
+
+        /**
          * Allow referrer uri hosts property.
          */
         @AttributeDefinition(
@@ -154,6 +160,11 @@ public class ReferrerFilter implements  Preprocessor {
      * Do we allow empty referrer?
      */
     private boolean allowEmpty;
+
+    /**
+     * Do we allow if Origin is set
+     */
+    private boolean bypassWithOrigin;
 
     /** Allowed uri referrers */
     private URL[] allowedUriReferrers;
@@ -256,6 +267,7 @@ public class ReferrerFilter implements  Preprocessor {
     @Activate
     protected void activate(final BundleContext context, Config config) {
         this.allowEmpty = config.allow_empty();
+        this.bypassWithOrigin = config.bypass_with_origin();
         this.allowedRegexReferrers = createRegexPatterns(config.allow_hosts_regexp());
         this.excludedRegexUserAgents = createRegexPatterns(config.exclude_agents_regexp());
 
@@ -371,6 +383,10 @@ public class ReferrerFilter implements  Preprocessor {
     }
 
     boolean isValidRequest(final HttpServletRequest request) {
+        final String origin = request.getHeader("origin");
+        if (origin != null && origin.trim().length() != 0 && this.bypassWithOrigin) {
+            return true;
+        }
         final String referrer = request.getHeader("referer");
         // check for missing/empty referrer
         if ( referrer == null || referrer.trim().length() == 0 ) {
