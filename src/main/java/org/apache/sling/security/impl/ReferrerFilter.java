@@ -31,6 +31,7 @@ import java.util.Enumeration;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.function.Function;
 import java.util.regex.Pattern;
 import javax.servlet.FilterChain;
 import javax.servlet.FilterConfig;
@@ -42,6 +43,9 @@ import javax.servlet.http.HttpServletResponse;
 
 import org.osgi.service.component.annotations.Activate;
 import org.osgi.service.component.annotations.Component;
+import org.osgi.service.component.annotations.Reference;
+import org.osgi.service.component.annotations.ReferenceCardinality;
+import org.osgi.service.component.annotations.ReferencePolicyOption;
 import org.osgi.service.http.whiteboard.HttpWhiteboardConstants;
 import org.osgi.service.http.whiteboard.Preprocessor;
 import org.osgi.service.metatype.annotations.AttributeDefinition;
@@ -104,12 +108,6 @@ public class ReferrerFilter implements Preprocessor {
         boolean allow_empty() default false;
 
         /**
-         * Bypass the referrer check when evaluating requests with an Origin header.
-         */
-        @AttributeDefinition(name = "Bypass with Origin", description = "Bypass the referrer check when evaluating requests with an Origin header. Another check should be performed to validate the CORS Headers")
-        boolean bypass_with_origin() default false;
-
-        /**
          * Allow referrer uri hosts property.
          */
         @AttributeDefinition(
@@ -166,11 +164,6 @@ public class ReferrerFilter implements Preprocessor {
      * Do we allow empty referrer?
      */
     private final boolean allowEmpty;
-
-    /**
-     * Do we allow if Origin is set
-     */
-    private boolean bypassWithOrigin;
 
     /** Allowed uri referrers */
     private final URL[] allowedUriReferrers;
@@ -271,17 +264,32 @@ public class ReferrerFilter implements Preprocessor {
         return patterns.toArray(new Pattern[0]);
     }
 
+    private String[] mergeValues(String[] primary, List<ReferrerFilterAmendment> amendments,
+            Function<ReferrerFilterAmendment, String[]> extractor) {
+        Set<String> consolidated = new HashSet<>();
+        if (primary != null) {
+            Arrays.stream(primary).forEach(consolidated::add);
+        }
+        if (amendments != null) {
+            amendments.stream().map(extractor::apply).forEach(v -> Arrays.stream(v).forEach(consolidated::add));
+        }
+        return consolidated.toArray(new String[0]);
+    }
+
     @Activate
-    public ReferrerFilter(final Config config) {
+    public ReferrerFilter(final Config config,
+            @Reference(policyOption = ReferencePolicyOption.GREEDY, cardinality = ReferenceCardinality.MULTIPLE, service=ReferrerFilterAmendment.class) List<ReferrerFilterAmendment> amendments) {
         this.allowEmpty = config.allow_empty();
-        this.bypassWithOrigin = config.bypass_with_origin();
-        this.allowedRegexReferrers = createRegexPatterns(config.allow_hosts_regexp());
-        this.excludedRegexUserAgents = createRegexPatterns(config.exclude_agents_regexp());
-        this.excludedPaths = config.exclude_paths();
+        this.allowedRegexReferrers = createRegexPatterns(
+                mergeValues(config.allow_hosts_regexp(), amendments, (a) -> a.allowHostsRegex()));
+        this.excludedRegexUserAgents = createRegexPatterns(
+                mergeValues(config.exclude_agents_regexp(), amendments, a -> a.excludeAgentsRegex()));
+        this.excludedPaths = mergeValues(config.exclude_paths(), amendments, a -> a.excludePaths());
 
         final Set<String> allowUriReferrers = getDefaultAllowedReferrers();
         if (config.allow_hosts() != null) {
-            allowUriReferrers.addAll(Arrays.asList(config.allow_hosts()));
+            allowUriReferrers.addAll(
+                    Arrays.asList(mergeValues(config.allow_hosts(), amendments, a -> a.allowHosts())));
         }
         this.allowedUriReferrers = createReferrerUrls(allowUriReferrers);
 
@@ -375,16 +383,17 @@ public class ReferrerFilter implements Preprocessor {
     }
 
     boolean isValidRequest(final HttpServletRequest request) {
-        final String origin = request.getHeader("origin");
-        if (origin != null && origin.trim().length() != 0 && this.bypassWithOrigin) {
-            return true;
-        }
         // ignore referrer check if the request matches any of the configured excluded path.
         if (isExcludedPath(request)) {
             return true;
         }
         
-        final String referrer = request.getHeader("referer");
+        String referrer = request.getHeader("referer");
+        // use the origin if the referrer is not set
+        if (referrer == null || referrer.trim().length() == 0) {
+            referrer = request.getHeader("origin");
+        }
+
         // check for missing/empty referrer
         if (referrer == null || referrer.trim().length() == 0) {
             if (!this.allowEmpty) {
