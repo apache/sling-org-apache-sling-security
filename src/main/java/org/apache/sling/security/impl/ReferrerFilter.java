@@ -27,10 +27,8 @@ import java.net.SocketException;
 import java.net.URL;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Dictionary;
 import java.util.Enumeration;
 import java.util.HashSet;
-import java.util.Hashtable;
 import java.util.List;
 import java.util.Set;
 import java.util.regex.Pattern;
@@ -41,12 +39,9 @@ import javax.servlet.ServletRequest;
 import javax.servlet.ServletResponse;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
-import org.osgi.framework.BundleContext;
-import org.osgi.framework.Constants;
-import org.osgi.framework.ServiceRegistration;
+
 import org.osgi.service.component.annotations.Activate;
 import org.osgi.service.component.annotations.Component;
-import org.osgi.service.component.annotations.Deactivate;
 import org.osgi.service.http.whiteboard.HttpWhiteboardConstants;
 import org.osgi.service.http.whiteboard.Preprocessor;
 import org.osgi.service.metatype.annotations.AttributeDefinition;
@@ -58,12 +53,14 @@ import org.slf4j.LoggerFactory;
 @Component(
         service = Preprocessor.class,
         property = {
-                HttpWhiteboardConstants.HTTP_WHITEBOARD_FILTER_PATTERN + "=/",
-                HttpWhiteboardConstants.HTTP_WHITEBOARD_CONTEXT_SELECT + "=(" + HttpWhiteboardConstants.HTTP_WHITEBOARD_CONTEXT_NAME + "=*)"
+                HttpWhiteboardConstants.HTTP_WHITEBOARD_CONTEXT_SELECT + "=(" + HttpWhiteboardConstants.HTTP_WHITEBOARD_CONTEXT_NAME + "=*)",
+                "felix.webconsole.label=slingreferrerfilter",
+                "felix.webconsole.title=Sling Referrer Filter",
+                "felix.webconsole.configprinter.modes=always"
         }
 )
 @Designate(ocd = ReferrerFilter.Config.class)
-public class ReferrerFilter implements  Preprocessor {
+public class ReferrerFilter implements Preprocessor {
 
     /**
      * Request header providing the clients user agent information used
@@ -153,13 +150,22 @@ public class ReferrerFilter implements  Preprocessor {
                 description = "List of regexp for user agents not to check the referrer"
         )
         String[] exclude_agents_regexp() default {};
+
+        /**
+         * Excluded the configured paths from the referrer check
+         */
+        @AttributeDefinition(
+                name = "Exclude Paths",
+                description = "List of paths for which not to check the referrer"
+        )
+        String[] exclude_paths() default {};
     }
 
 
     /**
      * Do we allow empty referrer?
      */
-    private boolean allowEmpty;
+    private final boolean allowEmpty;
 
     /**
      * Do we allow if Origin is set
@@ -167,18 +173,19 @@ public class ReferrerFilter implements  Preprocessor {
     private boolean bypassWithOrigin;
 
     /** Allowed uri referrers */
-    private URL[] allowedUriReferrers;
+    private final URL[] allowedUriReferrers;
 
     /** Allowed regexp referrers */
-    private Pattern[] allowedRegexReferrers;
+    private final Pattern[] allowedRegexReferrers;
 
     /** Methods to be filtered. */
-    private String[] filterMethods;
+    private final String[] filterMethods;
+
+    /** User agents to be excluded */
+    private final Pattern[] excludedRegexUserAgents;
 
     /** Paths to be excluded */
-    private Pattern[] excludedRegexUserAgents;
-
-    private ServiceRegistration<Object> configPrinterRegistration;
+    private final String[] excludedPaths;
 
     /**
      * Create a default list of referrers
@@ -188,24 +195,24 @@ public class ReferrerFilter implements  Preprocessor {
         try {
             final Enumeration<NetworkInterface> ifaces = NetworkInterface.getNetworkInterfaces();
 
-            while(ifaces.hasMoreElements()){
+            while (ifaces.hasMoreElements()) {
                 final NetworkInterface iface = ifaces.nextElement();
-                logger.info("Adding Allowed referers for Interface:" + iface.getDisplayName());
+                logger.info("Adding Allowed referers for Interface: {}", iface.getDisplayName());
                 final Enumeration<InetAddress> ias = iface.getInetAddresses();
-                while(ias.hasMoreElements()){
+                while (ias.hasMoreElements()) {
                     final InetAddress ia = ias.nextElement();
                     final String address = ia.getHostAddress().trim().toLowerCase();
-                    if ( ia instanceof Inet4Address ) {
+                    if (ia instanceof Inet4Address) {
                         referrers.add("http://" + address + ":0");
                         referrers.add("https://" + address + ":0");
                     }
-                    if ( ia instanceof Inet6Address ) {
+                    if (ia instanceof Inet6Address) {
                         referrers.add("http://[" + address + "]" + ":0");
                         referrers.add("https://[" + address + "]" + ":0");
                     }
                 }
             }
-        } catch ( final SocketException se) {
+        } catch (final SocketException se) {
             logger.error("Unable to detect network interfaces", se);
         }
         referrers.add("http://localhost" + ":0");
@@ -220,10 +227,10 @@ public class ReferrerFilter implements  Preprocessor {
 
     private void add(final List<URL> urls, final String ref) {
         try {
-            final URL u  = new URL(ref);
+            final URL u = new URL(ref);
             urls.add(u);
         } catch (final MalformedURLException mue) {
-            logger.warn("Unable to create URL from " + ref + " : " + mue.getMessage());
+            logger.warn("Unable to create URL from {} : {}", ref, mue.getMessage());
         }
     }
 
@@ -233,17 +240,17 @@ public class ReferrerFilter implements  Preprocessor {
     private URL[] createReferrerUrls(final Set<String> referrers) {
         final List<URL> urls = new ArrayList<>();
 
-        for(final String ref : referrers) {
+        for (final String ref : referrers) {
             final int pos = ref.indexOf("://");
             // valid url?
-            if ( pos != -1 ) {
+            if (pos != -1) {
                 this.add(urls, ref);
             } else {
                 this.add(urls, "http://" + ref + ":0");
                 this.add(urls, "https://" + ref + ":0");
             }
         }
-        return urls.toArray(new URL[urls.size()]);
+        return urls.toArray(new URL[0]);
     }
 
     /**
@@ -251,71 +258,55 @@ public class ReferrerFilter implements  Preprocessor {
      */
     private Pattern[] createRegexPatterns(final String[] regexps) {
         final List<Pattern> patterns = new ArrayList<>();
-        if ( regexps != null ) {
-            for(final String regexp : regexps) {
+        if (regexps != null) {
+            for (final String regexp : regexps) {
                 try {
-                    final Pattern pattern  = Pattern.compile(regexp);
+                    final Pattern pattern = Pattern.compile(regexp);
                     patterns.add(pattern);
                 } catch (final Exception e) {
-                    logger.warn("Unable to create Pattern from {} : {}", new Object[]{regexp, e.getMessage()});
+                    logger.warn("Unable to create Pattern from {} : {}", regexp, e.getMessage());
                 }
             }
         }
-        return patterns.toArray(new Pattern[patterns.size()]);
+        return patterns.toArray(new Pattern[0]);
     }
 
     @Activate
-    protected void activate(final BundleContext context, Config config) {
+    public ReferrerFilter(final Config config) {
         this.allowEmpty = config.allow_empty();
         this.bypassWithOrigin = config.bypass_with_origin();
         this.allowedRegexReferrers = createRegexPatterns(config.allow_hosts_regexp());
         this.excludedRegexUserAgents = createRegexPatterns(config.exclude_agents_regexp());
+        this.excludedPaths = config.exclude_paths();
 
         final Set<String> allowUriReferrers = getDefaultAllowedReferrers();
-        if ( config.allow_hosts() != null ) {
+        if (config.allow_hosts() != null) {
             allowUriReferrers.addAll(Arrays.asList(config.allow_hosts()));
         }
         this.allowedUriReferrers = createReferrerUrls(allowUriReferrers);
 
-        this.filterMethods = config.filter_methods();
-        if (this.filterMethods != null
-            &&this.filterMethods.length == 1
-            && (this.filterMethods[0] == null || this.filterMethods[0].trim().length() == 0)) {
-            this.filterMethods = null;
-        }
-        if ( this.filterMethods != null ) {
-            for(int i=0; i<filterMethods.length; i++) {
-                filterMethods[i] = filterMethods[i].toUpperCase();
+        String[] methods = config.filter_methods();
+        if (methods != null) {
+            final List<String> values = new ArrayList<>();
+            for (final String m : methods) {
+                if (m != null && m.trim().length() > 0) {
+                    values.add(m.trim().toUpperCase());
+                }
+            }
+            if (values.isEmpty()) {
+                methods = null;
+            } else {
+                methods = values.toArray(new String[values.size()]);
             }
         }
-        this.configPrinterRegistration = registerConfigPrinter(context);
+        this.filterMethods = methods;
     }
-
-    @Deactivate
-    protected void deactivate() {
-        this.configPrinterRegistration.unregister();
-    }
-
-    private ServiceRegistration<Object> registerConfigPrinter(BundleContext bundleContext) {
-        final ConfigurationPrinter cfgPrinter = new ConfigurationPrinter();
-        final Dictionary<String, String> serviceProps = new Hashtable<>();
-        serviceProps.put(Constants.SERVICE_DESCRIPTION,
-            "Apache Sling Referrer Filter Configuration Printer");
-        serviceProps.put(Constants.SERVICE_VENDOR, "The Apache Software Foundation");
-        serviceProps.put("felix.webconsole.label", "slingreferrerfilter");
-        serviceProps.put("felix.webconsole.title", "Sling Referrer Filter");
-        serviceProps.put("felix.webconsole.configprinter.modes", "always");
-
-       return bundleContext.registerService(Object.class,
-                cfgPrinter, serviceProps);
-    }
-
 
     private boolean isModification(final HttpServletRequest req) {
         final String method = req.getMethod();
-        if ( filterMethods != null ) {
-            for(final String m : filterMethods) {
-                if ( m.equals(method) ) {
+        if (filterMethods != null) {
+            for (final String m : filterMethods) {
+                if (m.equals(method)) {
                     return true;
                 }
             }
@@ -327,14 +318,14 @@ public class ReferrerFilter implements  Preprocessor {
     public void doFilter(final ServletRequest req,
                          final ServletResponse res,
                          final FilterChain chain)
-    throws IOException, ServletException {
-        if ( req instanceof HttpServletRequest && res instanceof HttpServletResponse ) {
-            final HttpServletRequest request = (HttpServletRequest)req;
+            throws IOException, ServletException {
+        if (req instanceof HttpServletRequest && res instanceof HttpServletResponse) {
+            final HttpServletRequest request = (HttpServletRequest) req;
 
             // is this a modification request from a browser
-            if ( this.isBrowserRequest(request) && this.isModification(request) ) {
-                if ( !this.isValidRequest(request) ) {
-                    final HttpServletResponse response = (HttpServletResponse)res;
+            if (this.isBrowserRequest(request) && this.isModification(request)) {
+                if (!this.isValidRequest(request)) {
+                    final HttpServletResponse response = (HttpServletResponse) res;
                     // we use 403
                     response.sendError(403);
                     return;
@@ -344,18 +335,19 @@ public class ReferrerFilter implements  Preprocessor {
         chain.doFilter(req, res);
     }
 
-    final static class HostInfo {
-        public String host;
-        public String scheme;
-        public int port;
-        public String toURI() {
+    static final class HostInfo {
+        String host;
+        String scheme;
+        int port;
+
+        String toURI() {
             return scheme + "://" + host + ":" + port;
         }
     }
 
     HostInfo getHost(final String referrer) {
         final int startPos = referrer.indexOf("://") + 3;
-        if ( startPos == 2 ) {
+        if (startPos == 2 || startPos == referrer.length()) {
             // we consider this illegal
             return null;
         }
@@ -368,11 +360,11 @@ public class ReferrerFilter implements  Preprocessor {
         final String hostPart = (endPos == -1 ? hostAndPath.substring(startPos) : hostAndPath.substring(startPos, endPos));
         final int hostNameStart = hostPart.indexOf('@') + 1;
         final int hostNameEnd = hostPart.lastIndexOf(':');
-        if (hostNameEnd < hostNameStart ) {
+        if (hostNameEnd < hostNameStart) {
             info.host = hostPart.substring(hostNameStart);
-            if ( info.scheme.equals("http") ) {
+            if (info.scheme.equals("http")) {
                 info.port = 80;
-            } else if ( info.scheme.equals("https") ) {
+            } else if (info.scheme.equals("https")) {
                 info.port = 443;
             }
         } else {
@@ -387,39 +379,42 @@ public class ReferrerFilter implements  Preprocessor {
         if (origin != null && origin.trim().length() != 0 && this.bypassWithOrigin) {
             return true;
         }
+        // ignore referrer check if the request matches any of the configured excluded path.
+        if (isExcludedPath(request)) {
+            return true;
+        }
+        
         final String referrer = request.getHeader("referer");
         // check for missing/empty referrer
-        if ( referrer == null || referrer.trim().length() == 0 ) {
-            if ( !this.allowEmpty ) {
+        if (referrer == null || referrer.trim().length() == 0) {
+            if (!this.allowEmpty) {
                 this.logger.info("Rejected empty referrer header for {} request to {}", request.getMethod(), request.getRequestURI());
             }
             return this.allowEmpty;
         }
         // check for relative referrer - which is always allowed
-        if ( referrer.indexOf(":/") == - 1 ) {
+        if (!referrer.contains(":/")) {
             return true;
         }
 
         final HostInfo info = getHost(referrer);
-        if ( info == null ) {
+        if (info == null) {
             // if this is invalid we just return invalid
-            this.logger.info("Rejected illegal referrer header for {} request to {} : {}",
-                    new Object[] {request.getMethod(), request.getRequestURI(), referrer});
+            this.logger.info("Rejected illegal referrer header for {} request to {} : {}", request.getMethod(), request.getRequestURI(), referrer);
             return false;
         }
 
         // allow the request if the host name of the referrer is
         // the same as the request's host name
-        if ( info.host.equals(request.getServerName()) ) {
+        if (info.host.equals(request.getServerName())) {
             return true;
         }
 
         // allow the request if the referrer matches any of the allowed referrers
         boolean valid = isValidUriReferrer(info) || isValidRegexReferrer(info);
 
-        if ( !valid) {
-            this.logger.info("Rejected referrer header for {} request to {} : {}",
-                    new Object[] {request.getMethod(), request.getRequestURI(), referrer});
+        if (!valid) {
+            this.logger.info("Rejected referrer header for {} request to {} : {}", request.getMethod(), request.getRequestURI(), referrer);
         }
         return valid;
     }
@@ -445,9 +440,9 @@ public class ReferrerFilter implements  Preprocessor {
      * @return <code>true</code> if the hostInfo matches any of the allowed URI referrer.
      */
     private boolean isValidUriReferrer(HostInfo hostInfo) {
-        for(final URL ref : this.allowedUriReferrers) {
-            if ( hostInfo.host.equals(ref.getHost()) && hostInfo.scheme.equals(ref.getProtocol()) ) {
-                if ( ref.getPort() == 0 || hostInfo.port == ref.getPort() ) {
+        for (final URL ref : this.allowedUriReferrers) {
+            if (hostInfo.host.equals(ref.getHost()) && hostInfo.scheme.equals(ref.getProtocol())) {
+                if (ref.getPort() == 0 || hostInfo.port == ref.getPort()) {
                     return true;
                 }
             }
@@ -460,7 +455,7 @@ public class ReferrerFilter implements  Preprocessor {
      * @return <code>true</code> if the hostInfo matches any of the allowed regexp referrer.
      */
     private boolean isValidRegexReferrer(HostInfo hostInfo) {
-        for(final Pattern ref : this.allowedRegexReferrers) {
+        for (final Pattern ref : this.allowedRegexReferrers) {
             String url = hostInfo.toURI();
             if (ref.matcher(url).matches()) {
                 return true;
@@ -470,12 +465,32 @@ public class ReferrerFilter implements  Preprocessor {
     }
 
     /**
+     * Returns <code>true</code> if the path info associated with the given request is contained in the configured excluded paths.
+     *
+     * @param request The request to check
+     * @return <code>true</code> if the path-info associate with the given request is contained in the configured excluded paths.
+     */
+    private boolean isExcludedPath(HttpServletRequest request) {
+        if (this.excludedPaths == null) {
+            return false;
+        }
+        String path = request.getPathInfo();
+        for (final String excludedPath : this.excludedPaths) {
+            if (excludedPath != null && excludedPath.equals(path)) {
+                return true;
+            }
+        }
+        return false;
+    }
+    
+    /**
      * Returns <code>true</code> if the provided user agent matches any present exclusion regexp pattern.
+     *
      * @param userAgent The user agent string to check
      * @return <code>true</code> if the user agent matches any exclusion pattern.
      */
     private boolean isExcludedRegexUserAgent(String userAgent) {
-        for(final Pattern pattern : this.excludedRegexUserAgents) {
+        for (final Pattern pattern : this.excludedRegexUserAgents) {
             if (pattern.matcher(userAgent).matches()) {
                 return true;
             }
@@ -495,7 +510,7 @@ public class ReferrerFilter implements  Preprocessor {
      *
      * @param request The request to inspect
      * @return <code>true</code> if the request is assumed to be sent by a
-     *         browser.
+     * browser.
      */
     protected boolean isBrowserRequest(final HttpServletRequest request) {
         final String userAgent = request.getHeader(USER_AGENT);
@@ -504,23 +519,19 @@ public class ReferrerFilter implements  Preprocessor {
                 && !isExcludedRegexUserAgent(userAgent);
     }
 
-    public class ConfigurationPrinter {
-
-        /**
-         * Print out the allowedReferrers
-         * @see org.apache.felix.webconsole.ConfigurationPrinter#printConfiguration(java.io.PrintWriter)
-         * @param pw the PrintWriter object
-         */
-        public void printConfiguration(final PrintWriter pw) {
-            pw.println("Current Apache Sling Referrer Filter Allowed Referrers:");
-            pw.println();
-            for (final URL url : allowedUriReferrers) {
-                pw.println(url.toString());
-            }
-            for (final Pattern pattern : allowedRegexReferrers) {
-                pw.println(pattern.toString());
-            }
+    /**
+     * Print out the allowedReferrers
+     * @see org.apache.felix.webconsole.ConfigurationPrinter#printConfiguration(java.io.PrintWriter)
+     * @param pw the PrintWriter object
+     */
+    public void printConfiguration(final PrintWriter pw) {
+        pw.println("Current Apache Sling Referrer Filter Allowed Referrers:");
+        pw.println();
+        for (final URL url : allowedUriReferrers) {
+            pw.println(url.toString());
         }
-
+        for (final Pattern pattern : allowedRegexReferrers) {
+            pw.println(pattern.toString());
+        }
     }
 }

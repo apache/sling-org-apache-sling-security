@@ -16,22 +16,18 @@
  */
 package org.apache.sling.security.impl;
 
-import static org.mockito.Matchers.any;
-import static org.mockito.Mockito.doNothing;
-import static org.mockito.Mockito.doReturn;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import java.lang.annotation.Annotation;
-import java.util.Dictionary;
 
 import javax.servlet.http.HttpServletRequest;
 
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
-import org.osgi.framework.BundleContext;
-import org.osgi.framework.ServiceRegistration;
 
 public class ReferrerFilterTest {
 
@@ -39,11 +35,16 @@ public class ReferrerFilterTest {
 
     @Before
     public void setup() {
-        filter = new ReferrerFilter();
-        final BundleContext bundleCtx = mock(BundleContext.class);
-        final ServiceRegistration reg = mock(ServiceRegistration.class);
+        ReferrerFilter.Config config = createConfiguration(false, new String[]{"relhost"}, 
+                new String[]{"http://([^.]*.)?abshost:80", "^app://.+"}, 
+                new String[]{"[a-zA-Z]*\\/[0-9]*\\.[0-9]*;Some-Agent\\s.*"}, 
+                new String[] {null, "/test_path"});
+        filter = new ReferrerFilter(config);
+    }
 
-        ReferrerFilter.Config config = new ReferrerFilter.Config() {
+    private static ReferrerFilter.Config createConfiguration(boolean allowEmpty, String[] allowHosts, String[] allowHostsRexexp, 
+                                                             String[] excludeAgentsRegexp, String[] excludePaths) {
+        return new ReferrerFilter.Config() {
             @Override
             public Class<? extends Annotation> annotationType() {
                 return null;
@@ -51,7 +52,7 @@ public class ReferrerFilterTest {
 
             @Override
             public boolean allow_empty() {
-                return false;
+                return allowEmpty;
             }
 
             @Override
@@ -61,15 +62,12 @@ public class ReferrerFilterTest {
 
             @Override
             public String[] allow_hosts() {
-                return new String[]{"relhost"};
+                return allowHosts;
             }
 
             @Override
             public String[] allow_hosts_regexp() {
-                return new String[]{
-                    "http://([^.]*.)?abshost:80",
-                    "^app://.+"
-                };
+                return allowHostsRexexp;
             }
 
             @Override
@@ -79,13 +77,14 @@ public class ReferrerFilterTest {
 
             @Override
             public String[] exclude_agents_regexp() {
-                return new String[]{"[a-zA-Z]*\\/[0-9]*\\.[0-9]*;Some-Agent\\s.*"};
+                return excludeAgentsRegexp;
             }
-        };
 
-        doReturn(reg).when(bundleCtx).registerService(any(String[].class), any(), any(Dictionary.class));
-        doNothing().when(reg).unregister();
-        filter.activate(bundleCtx, config);
+            @Override
+            public String[] exclude_paths() {
+                return excludePaths;
+            }
+        }; 
     }
 
     @Test
@@ -104,43 +103,83 @@ public class ReferrerFilterTest {
         Assert.assertEquals("127.0.0.1", filter.getHost("http://127.0.0.1:242").host);
         Assert.assertEquals("localhost", filter.getHost("http://localhost:256235/etewteq.ff").host);
         Assert.assertEquals("127.0.0.1", filter.getHost("http://127.0.0.1/wetew.qerq").host);
-        Assert.assertEquals(null, filter.getHost("http:/admin:admin@somehost:4343/somewhere"));
+        Assert.assertNull(filter.getHost("http:/admin:admin@somehost:4343/somewhere"));
     }
 
-    private HttpServletRequest getRequest(final String referrer, final String userAgent) {
+    private static HttpServletRequest getRequest(final String referrer, final String userAgent, final String pathInfo) {
         final HttpServletRequest request = mock(HttpServletRequest.class);
         when(request.getMethod()).thenReturn("POST");
-        when(request.getRequestURI()).thenReturn("http://somehost/somewhere");
+        if (pathInfo != null) {
+            when(request.getRequestURI()).thenReturn("http://somehost/somewhere"+pathInfo);
+            when(request.getPathInfo()).thenReturn(pathInfo);
+        } else {
+            when(request.getRequestURI()).thenReturn("http://somehost/somewhere");
+        }
         when(request.getHeader("referer")).thenReturn(referrer);
         if ( userAgent != null && userAgent.length() > 0 ) {
             when(request.getHeader("User-Agent")).thenReturn(userAgent);
         }
         return request;
     }
+    
+    private static HttpServletRequest getRequest(final String referrer, final String userAgent) {
+        return getRequest(referrer, userAgent, null);
+    }
 
-    private HttpServletRequest getRequest(final String referrer) {
+    private static HttpServletRequest getRequest(final String referrer) {
         return getRequest(referrer, null);
     }
 
     @Test
     public void testValidRequest() {
-        Assert.assertEquals(false, filter.isValidRequest(getRequest(null)));
-        Assert.assertEquals(true, filter.isValidRequest(getRequest("relative")));
-        Assert.assertEquals(true, filter.isValidRequest(getRequest("/relative/too")));
-        Assert.assertEquals(true, filter.isValidRequest(getRequest("/relative/but/[illegal]")));
-        Assert.assertEquals(false, filter.isValidRequest(getRequest("http://somehost")));
-        Assert.assertEquals(true, filter.isValidRequest(getRequest("http://localhost")));
-        Assert.assertEquals(true, filter.isValidRequest(getRequest("http://127.0.0.1")));
-        Assert.assertEquals(false, filter.isValidRequest(getRequest("http://somehost/but/[illegal]")));
-        Assert.assertEquals(true, filter.isValidRequest(getRequest("http://relhost")));
-        Assert.assertEquals(true, filter.isValidRequest(getRequest("http://relhost:9001")));
-        Assert.assertEquals(false, filter.isValidRequest(getRequest("http://abshost:9001")));
-        Assert.assertEquals(false, filter.isValidRequest(getRequest("https://abshost:80")));
-        Assert.assertEquals(true, filter.isValidRequest(getRequest("http://abshost:80")));
-        Assert.assertEquals(false, filter.isValidRequest(getRequest("http://abshost:9001")));
-        Assert.assertEquals(true, filter.isValidRequest(getRequest("http://another.abshost:80")));
-        Assert.assertEquals(false, filter.isValidRequest(getRequest("http://yet.another.abshost:80")));
-        Assert.assertEquals(true, filter.isValidRequest(getRequest("app://yet.another.abshost:80")));
+        assertFalse(filter.isValidRequest(getRequest(null)));
+        assertTrue(filter.isValidRequest(getRequest("relative")));
+        assertTrue(filter.isValidRequest(getRequest("/relative/too")));
+        assertTrue(filter.isValidRequest(getRequest("/relative/but/[illegal]")));
+        assertFalse(filter.isValidRequest(getRequest("http://somehost")));
+        assertTrue(filter.isValidRequest(getRequest("http://localhost")));
+        assertTrue(filter.isValidRequest(getRequest("http://127.0.0.1")));
+        assertFalse(filter.isValidRequest(getRequest("http://somehost/but/[illegal]")));
+        assertTrue(filter.isValidRequest(getRequest("http://relhost")));
+        assertTrue(filter.isValidRequest(getRequest("http://relhost:9001")));
+        assertFalse(filter.isValidRequest(getRequest("http://abshost:9001")));
+        assertFalse(filter.isValidRequest(getRequest("https://abshost:80")));
+        assertTrue(filter.isValidRequest(getRequest("http://abshost:80")));
+        assertFalse(filter.isValidRequest(getRequest("http://abshost:9001")));
+        assertTrue(filter.isValidRequest(getRequest("http://another.abshost:80")));
+        assertFalse(filter.isValidRequest(getRequest("http://yet.another.abshost:80")));
+        assertTrue(filter.isValidRequest(getRequest("app://yet.another.abshost:80")));
+        assertFalse(filter.isValidRequest(getRequest("?://")));
+    }
+    
+    @Test
+    public void testExcludedPath() {
+        assertTrue(filter.isValidRequest(getRequest(null, null, "/test_path")));
+        assertFalse(filter.isValidRequest(getRequest(null, null, "/test_path/subtree")));
+        assertFalse(filter.isValidRequest(getRequest(null, null, "/test_path_sibling")));
+        
+        assertTrue(filter.isValidRequest(getRequest("relative", null, "/test_path")));
+        assertTrue(filter.isValidRequest(getRequest("http://yet.another.abshost:80", null, "/test_path")));
+    }
+
+    @Test
+    public void testExcludedPathNull() {
+        ReferrerFilter rf = new ReferrerFilter(createConfiguration(false, null, null, null, null));
+        
+        assertFalse(rf.isValidRequest(getRequest(null, null, "/test_path")));
+        assertFalse(rf.isValidRequest(getRequest(null, null, "/test_path/subtree")));
+        assertFalse(rf.isValidRequest(getRequest(null, null, "/test_path_sibling")));
+
+        assertTrue(rf.isValidRequest(getRequest("relative", null, "/test_path")));
+        assertFalse(rf.isValidRequest(getRequest("http://yet.another.abshost:80", null, "/test_path")));
+    }
+    
+    @Test
+    public void testAllowEmpty() {
+        ReferrerFilter rf = new ReferrerFilter(createConfiguration(true, null, null, null, null));
+
+        assertTrue(rf.isValidRequest(getRequest(null, null, "/test_path")));
+        assertTrue(rf.isValidRequest(getRequest("", null, null)));
     }
 
     @Test
@@ -153,8 +192,8 @@ public class ReferrerFilterTest {
     @Test
     public void testIsBrowserRequest() {
         String userAgent = "Mozilla/5.0;Some-Agent (Macintosh; Intel Mac OS X 10_12_5) AppleWebKit/603.2.4 (KHTML, like Gecko)";
-        Assert.assertEquals(false, filter.isBrowserRequest(getRequest(null, userAgent)));
+        assertFalse(filter.isBrowserRequest(getRequest(null, userAgent)));
         userAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_12_5) AppleWebKit/603.2.4 (KHTML, like Gecko)";
-        Assert.assertEquals(true, filter.isBrowserRequest(getRequest(null, userAgent)));
+        assertTrue(filter.isBrowserRequest(getRequest(null, userAgent)));
     }
 }
