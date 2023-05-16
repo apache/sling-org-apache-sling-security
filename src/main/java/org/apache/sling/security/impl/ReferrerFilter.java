@@ -27,12 +27,14 @@ import java.net.SocketException;
 import java.net.URL;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.Enumeration;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.function.Function;
 import java.util.regex.Pattern;
+
 import javax.servlet.FilterChain;
 import javax.servlet.FilterConfig;
 import javax.servlet.ServletException;
@@ -249,7 +251,7 @@ public class ReferrerFilter implements Preprocessor {
     /**
      * Create Patterns out of the regular expression referrer list
      */
-    private Pattern[] createRegexPatterns(final String[] regexps) {
+    private Pattern[] createRegexPatterns(final Collection<String> regexps) {
         final List<Pattern> patterns = new ArrayList<>();
         if (regexps != null) {
             for (final String regexp : regexps) {
@@ -264,7 +266,7 @@ public class ReferrerFilter implements Preprocessor {
         return patterns.toArray(new Pattern[0]);
     }
 
-    private String[] mergeValues(String[] primary, List<ReferrerFilterAmendment> amendments,
+    private Collection<String> mergeValues(String[] primary, List<ReferrerFilterAmendment> amendments,
             Function<ReferrerFilterAmendment, String[]> extractor) {
         Set<String> consolidated = new HashSet<>();
         if (primary != null) {
@@ -273,7 +275,7 @@ public class ReferrerFilter implements Preprocessor {
         if (amendments != null) {
             amendments.stream().map(extractor::apply).forEach(v -> Arrays.stream(v).forEach(consolidated::add));
         }
-        return consolidated.toArray(new String[0]);
+        return consolidated;
     }
 
     @Activate
@@ -281,15 +283,15 @@ public class ReferrerFilter implements Preprocessor {
             @Reference(policyOption = ReferencePolicyOption.GREEDY, cardinality = ReferenceCardinality.MULTIPLE, service=ReferrerFilterAmendment.class) List<ReferrerFilterAmendment> amendments) {
         this.allowEmpty = config.allow_empty();
         this.allowedRegexReferrers = createRegexPatterns(
-                mergeValues(config.allow_hosts_regexp(), amendments, (a) -> a.allowHostsRegex()));
+                mergeValues(config.allow_hosts_regexp(), amendments, a -> a.allowHostsRegex()));
         this.excludedRegexUserAgents = createRegexPatterns(
                 mergeValues(config.exclude_agents_regexp(), amendments, a -> a.excludeAgentsRegex()));
-        this.excludedPaths = mergeValues(config.exclude_paths(), amendments, a -> a.excludePaths());
+        this.excludedPaths = mergeValues(config.exclude_paths(), amendments, a -> a.excludePaths()).toArray(new String[0]);
 
         final Set<String> allowUriReferrers = getDefaultAllowedReferrers();
         if (config.allow_hosts() != null) {
             allowUriReferrers.addAll(
-                    Arrays.asList(mergeValues(config.allow_hosts(), amendments, a -> a.allowHosts())));
+                    mergeValues(config.allow_hosts(), amendments, a -> a.allowHosts()));
         }
         this.allowedUriReferrers = createReferrerUrls(allowUriReferrers);
 
