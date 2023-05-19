@@ -22,9 +22,11 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import java.lang.annotation.Annotation;
+import java.util.Collections;
 
 import javax.servlet.http.HttpServletRequest;
 
+import org.apache.sling.security.impl.ReferrerFilterAmendmentImpl.Config;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
@@ -35,15 +37,16 @@ public class ReferrerFilterTest {
 
     @Before
     public void setup() {
-        ReferrerFilter.Config config = createConfiguration(false, new String[]{"relhost"}, 
-                new String[]{"http://([^.]*.)?abshost:80", "^app://.+"}, 
-                new String[]{"[a-zA-Z]*\\/[0-9]*\\.[0-9]*;Some-Agent\\s.*"}, 
-                new String[] {null, "/test_path"});
-        filter = new ReferrerFilter(config);
+        ReferrerFilter.Config config = createConfiguration(false, new String[] { "relhost" },
+                new String[] { "http://([^.]*.)?abshost:80", "^app://.+" },
+                new String[] { "[a-zA-Z]*\\/[0-9]*\\.[0-9]*;Some-Agent\\s.*" },
+                new String[] { null, "/test_path" });
+        filter = new ReferrerFilter(config, Collections.emptyList());
     }
 
-    private static ReferrerFilter.Config createConfiguration(boolean allowEmpty, String[] allowHosts, String[] allowHostsRexexp, 
-                                                             String[] excludeAgentsRegexp, String[] excludePaths) {
+    private static ReferrerFilter.Config createConfiguration(boolean allowEmpty, String[] allowHosts,
+            String[] allowHostsRexexp,
+            String[] excludeAgentsRegexp, String[] excludePaths) {
         return new ReferrerFilter.Config() {
             @Override
             public Class<? extends Annotation> annotationType() {
@@ -79,7 +82,7 @@ public class ReferrerFilterTest {
             public String[] exclude_paths() {
                 return excludePaths;
             }
-        }; 
+        };
     }
 
     @Test
@@ -105,18 +108,18 @@ public class ReferrerFilterTest {
         final HttpServletRequest request = mock(HttpServletRequest.class);
         when(request.getMethod()).thenReturn("POST");
         if (pathInfo != null) {
-            when(request.getRequestURI()).thenReturn("http://somehost/somewhere"+pathInfo);
+            when(request.getRequestURI()).thenReturn("http://somehost/somewhere" + pathInfo);
             when(request.getPathInfo()).thenReturn(pathInfo);
         } else {
             when(request.getRequestURI()).thenReturn("http://somehost/somewhere");
         }
         when(request.getHeader("referer")).thenReturn(referrer);
-        if ( userAgent != null && userAgent.length() > 0 ) {
+        if (userAgent != null && userAgent.length() > 0) {
             when(request.getHeader("User-Agent")).thenReturn(userAgent);
         }
         return request;
     }
-    
+
     private static HttpServletRequest getRequest(final String referrer, final String userAgent) {
         return getRequest(referrer, userAgent, null);
     }
@@ -146,21 +149,22 @@ public class ReferrerFilterTest {
         assertTrue(filter.isValidRequest(getRequest("app://yet.another.abshost:80")));
         assertFalse(filter.isValidRequest(getRequest("?://")));
     }
-    
+
     @Test
     public void testExcludedPath() {
         assertTrue(filter.isValidRequest(getRequest(null, null, "/test_path")));
         assertFalse(filter.isValidRequest(getRequest(null, null, "/test_path/subtree")));
         assertFalse(filter.isValidRequest(getRequest(null, null, "/test_path_sibling")));
-        
+
         assertTrue(filter.isValidRequest(getRequest("relative", null, "/test_path")));
         assertTrue(filter.isValidRequest(getRequest("http://yet.another.abshost:80", null, "/test_path")));
     }
 
     @Test
     public void testExcludedPathNull() {
-        ReferrerFilter rf = new ReferrerFilter(createConfiguration(false, null, null, null, null));
-        
+        ReferrerFilter rf = new ReferrerFilter(createConfiguration(false, null, null, null, null),
+                Collections.emptyList());
+
         assertFalse(rf.isValidRequest(getRequest(null, null, "/test_path")));
         assertFalse(rf.isValidRequest(getRequest(null, null, "/test_path/subtree")));
         assertFalse(rf.isValidRequest(getRequest(null, null, "/test_path_sibling")));
@@ -168,10 +172,59 @@ public class ReferrerFilterTest {
         assertTrue(rf.isValidRequest(getRequest("relative", null, "/test_path")));
         assertFalse(rf.isValidRequest(getRequest("http://yet.another.abshost:80", null, "/test_path")));
     }
-    
+
+    @Test
+    public void testWithAmendments() {
+        ReferrerFilterAmendment amendment = new ReferrerFilterAmendmentImpl(new Config() {
+
+            @Override
+            public Class<? extends Annotation> annotationType() {
+                throw new UnsupportedOperationException("Unimplemented method 'annotationType'");
+            }
+
+            @Override
+            public String[] allow_hosts() {
+                return new String[]{"test.com"};
+            }
+
+            @Override
+            public String[] allow_hosts_regexp() {
+                return new String[]{".*test2.com.*"};
+            }
+
+            @Override
+            public String[] exclude_agents_regexp() {
+                return null;
+            }
+
+            @Override
+            public String[] exclude_paths() {
+                return new String[]{"/testpath2"};
+            }
+            
+        });
+        ReferrerFilter rf = new ReferrerFilter(createConfiguration(false, null, new String[]{".*test1.com.*"}, null, null), Collections.singletonList(amendment));
+        
+        assertTrue(rf.isValidRequest(getRequest(null, null, "/testpath2")));
+        assertFalse(rf.isValidRequest(getRequest(null, null, "/test1path")));
+
+        assertFalse(rf.isValidRequest(getRequest("http://testnotvalid.com:80", null, "/test_path")));
+        assertTrue(rf.isValidRequest(getRequest("http://test1.com:80", null, "/test_path")));
+        assertTrue(rf.isValidRequest(getRequest("http://test2.com:80", null, "/test_path")));
+    }
+
+
+    @Test
+    public void testAllowsWithOrigin(){
+        HttpServletRequest request = getRequest(null);
+        when(request.getHeader("origin")).thenReturn("http://abshost");
+        Assert.assertEquals(true, filter.isValidRequest(request));
+    }
+
     @Test
     public void testAllowEmpty() {
-        ReferrerFilter rf = new ReferrerFilter(createConfiguration(true, null, null, null, null));
+        ReferrerFilter rf = new ReferrerFilter(createConfiguration(true, null, null, null, null),
+                Collections.emptyList());
 
         assertTrue(rf.isValidRequest(getRequest(null, null, "/test_path")));
         assertTrue(rf.isValidRequest(getRequest("", null, null)));

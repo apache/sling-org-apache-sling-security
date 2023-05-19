@@ -27,11 +27,14 @@ import java.net.SocketException;
 import java.net.URL;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.Enumeration;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.function.Function;
 import java.util.regex.Pattern;
+
 import javax.servlet.FilterChain;
 import javax.servlet.FilterConfig;
 import javax.servlet.ServletException;
@@ -42,6 +45,9 @@ import javax.servlet.http.HttpServletResponse;
 
 import org.osgi.service.component.annotations.Activate;
 import org.osgi.service.component.annotations.Component;
+import org.osgi.service.component.annotations.Reference;
+import org.osgi.service.component.annotations.ReferenceCardinality;
+import org.osgi.service.component.annotations.ReferencePolicyOption;
 import org.osgi.service.http.whiteboard.HttpWhiteboardConstants;
 import org.osgi.service.http.whiteboard.Preprocessor;
 import org.osgi.service.metatype.annotations.AttributeDefinition;
@@ -245,7 +251,7 @@ public class ReferrerFilter implements Preprocessor {
     /**
      * Create Patterns out of the regular expression referrer list
      */
-    private Pattern[] createRegexPatterns(final String[] regexps) {
+    private Pattern[] createRegexPatterns(final Collection<String> regexps) {
         final List<Pattern> patterns = new ArrayList<>();
         if (regexps != null) {
             for (final String regexp : regexps) {
@@ -260,16 +266,32 @@ public class ReferrerFilter implements Preprocessor {
         return patterns.toArray(new Pattern[0]);
     }
 
+    private Collection<String> mergeValues(String[] primary, List<ReferrerFilterAmendment> amendments,
+            Function<ReferrerFilterAmendment, String[]> extractor) {
+        Set<String> consolidated = new HashSet<>();
+        if (primary != null) {
+            Arrays.stream(primary).forEach(consolidated::add);
+        }
+        if (amendments != null) {
+            amendments.stream().map(extractor::apply).forEach(v -> Arrays.stream(v).forEach(consolidated::add));
+        }
+        return consolidated;
+    }
+
     @Activate
-    public ReferrerFilter(final Config config) {
+    public ReferrerFilter(final Config config,
+            @Reference(policyOption = ReferencePolicyOption.GREEDY, cardinality = ReferenceCardinality.MULTIPLE, service=ReferrerFilterAmendment.class) List<ReferrerFilterAmendment> amendments) {
         this.allowEmpty = config.allow_empty();
-        this.allowedRegexReferrers = createRegexPatterns(config.allow_hosts_regexp());
-        this.excludedRegexUserAgents = createRegexPatterns(config.exclude_agents_regexp());
-        this.excludedPaths = config.exclude_paths();
+        this.allowedRegexReferrers = createRegexPatterns(
+                mergeValues(config.allow_hosts_regexp(), amendments, a -> a.allowHostsRegex()));
+        this.excludedRegexUserAgents = createRegexPatterns(
+                mergeValues(config.exclude_agents_regexp(), amendments, a -> a.excludeAgentsRegex()));
+        this.excludedPaths = mergeValues(config.exclude_paths(), amendments, a -> a.excludePaths()).toArray(new String[0]);
 
         final Set<String> allowUriReferrers = getDefaultAllowedReferrers();
         if (config.allow_hosts() != null) {
-            allowUriReferrers.addAll(Arrays.asList(config.allow_hosts()));
+            allowUriReferrers.addAll(
+                    mergeValues(config.allow_hosts(), amendments, a -> a.allowHosts()));
         }
         this.allowedUriReferrers = createReferrerUrls(allowUriReferrers);
 
@@ -368,7 +390,12 @@ public class ReferrerFilter implements Preprocessor {
             return true;
         }
         
-        final String referrer = request.getHeader("referer");
+        String referrer = request.getHeader("referer");
+        // use the origin if the referrer is not set
+        if (referrer == null || referrer.trim().length() == 0) {
+            referrer = request.getHeader("origin");
+        }
+
         // check for missing/empty referrer
         if (referrer == null || referrer.trim().length() == 0) {
             if (!this.allowEmpty) {
