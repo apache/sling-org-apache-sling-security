@@ -1,3 +1,4 @@
 -noimportjava: true
+Import-Package: org.apache.sling.*;resolution:=optional,*
 Require-Capability: osgi.implementation;filter:="(&(osgi.implementation=osgi.http)(version>=1.0)(!(version>=2.0)))"
 
