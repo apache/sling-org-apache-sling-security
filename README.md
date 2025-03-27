@@ -6,4 +6,43 @@
 
 This module is part of the [Apache Sling](https://sling.apache.org) project.
 
-The Apache Sling Security module.
+The Apache Sling Security module provides CSRF protection through a filter checking the referrer and a content disposition filter. This OSGi bundle can be used as a standalone bundle outside of Apache Sling - in that case only the referrer check functionality is available as the content disposition filter depends on the Apache Sling Framework
+
+## Referrer Filter (CSRF Protection)
+
+Configuring the Apache Sling Referrer Filter involves setting up an OSGi configuration to manage which referrers are allowed to access your application. Here are some of the options:
+
+- **Allow Empty**: Determines if requests with empty or missing referrer headers are allowed. This should typically be set to `false` for security reasons.
+- **Allow Hosts**: Specifies a list of allowed hosts for the referrer. These are matched against the full referrer URL.
+- **Allow Regexp Hosts**: Allows using regular expressions to match referrer hosts.
+- **Filter Methods**: Specifies which HTTP methods (e.g., POST, PUT, DELETE) are filtered by the Referrer Filter.
+- **Exclude Regexp User Agents**: Allows excluding certain user agents from referrer checks.
+- **Exclude Paths**: Specifies paths that should not be checked for referrers.
+
+### Sample Configuration
+
+The filter can be configured through an OSGi configuration for the PID `org.apache.sling.security.impl.ReferrerFilter`. This is a sample configuration in JSON format:
+
+```json
+{
+  "allow.empty": false,
+  "allow.hosts": ["mysite.com", "localhost"],
+  "allow.hosts.regexp": [],
+  "filter.methods": ["POST", "PUT", "DELETE", "COPY", "MOVE"],
+  "exclude.agents.regexp": [],
+  "exclude.paths": []
+}
+```
+
+In addition it is possible to amend the configuration by additional OSGi factory configurations for the factory PID `org.apache.sling.security.impl.ReferrerFilterAmendmentImpl`. This is a sample configuration in JSON format:
+
+```json
+{
+  "allow.hosts": ["mysite.com", "localhost"],
+  "allow.hosts.regexp": [],
+  "exclude.agents.regexp": [],
+  "exclude.paths": []
+}
+```
+
+
