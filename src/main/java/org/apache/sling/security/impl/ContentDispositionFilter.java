@@ -1,20 +1,29 @@
 /*
- * Licensed to the Apache Software Foundation (ASF) under one or more
- * contributor license agreements.  See the NOTICE file distributed with
- * this work for additional information regarding copyright ownership.
- * The ASF licenses this file to You under the Apache License, Version 2.0
- * (the "License"); you may not use this file except in compliance with
- * the License.  You may obtain a copy of the License at
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *   http://www.apache.org/licenses/LICENSE-2.0
  *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
  */
 package org.apache.sling.security.impl;
+
+import javax.servlet.Filter;
+import javax.servlet.FilterChain;
+import javax.servlet.FilterConfig;
+import javax.servlet.ServletException;
+import javax.servlet.ServletRequest;
+import javax.servlet.ServletResponse;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -25,13 +34,6 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-
-import javax.servlet.Filter;
-import javax.servlet.FilterChain;
-import javax.servlet.FilterConfig;
-import javax.servlet.ServletException;
-import javax.servlet.ServletRequest;
-import javax.servlet.ServletResponse;
 
 import org.apache.sling.api.SlingHttpServletRequest;
 import org.apache.sling.api.SlingHttpServletResponse;
@@ -45,14 +47,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 @Component(
-    service = Filter.class,
-    property={
-        "sling.filter.scope=request",
-        "sling.filter.scope=forward",
-        "service.ranking:Integer=25000"
-    }
-)
-@Designate(ocd=ContentDispositionFilterConfiguration.class)
+        service = Filter.class,
+        property = {"sling.filter.scope=request", "sling.filter.scope=forward", "service.ranking:Integer=25000"})
+@Designate(ocd = ContentDispositionFilterConfiguration.class)
 public class ContentDispositionFilter implements Filter {
 
     /**
@@ -95,7 +92,9 @@ public class ContentDispositionFilter implements Filter {
 
                     if (colonIdx > -1 && colonIdx < idx) {
                         // ':'  in paths is not allowed
-                        logger.info("wildcard ('*') in content type is not allowed, but found content type with value '{}'", path.substring(colonIdx));
+                        logger.info(
+                                "wildcard ('*') in content type is not allowed, but found content type with value '{}'",
+                                path.substring(colonIdx));
                     } else {
                         String p = null;
                         if (idx >= 0) {
@@ -120,7 +119,6 @@ public class ContentDispositionFilter implements Filter {
                             contentTypesMap.put(p, contentTypes);
                         }
                     }
-
                 }
             }
         }
@@ -130,15 +128,19 @@ public class ContentDispositionFilter implements Filter {
 
         enableContentDispositionAllPaths = configuration.sling_content_disposition_all_paths();
 
-
-        String[] contentDispositionExcludedPathsArray = configuration.sling_content_disposition_excluded_paths() != null ? configuration.sling_content_disposition_excluded_paths() : new String[]{};
+        String[] contentDispositionExcludedPathsArray = configuration.sling_content_disposition_excluded_paths() != null
+                ? configuration.sling_content_disposition_excluded_paths()
+                : new String[] {};
 
         contentDispositionExcludedPaths = new HashSet<>(Arrays.asList(contentDispositionExcludedPathsArray));
 
-        logger.info("Initialized. content disposition paths: {}, content disposition paths-pfx {}, content disposition excluded paths: {}. Enable Content Disposition for all paths is set to {}",
-                contentDispositionPaths, contentDispositionPathsPfx, contentDispositionExcludedPaths, enableContentDispositionAllPaths);
+        logger.info(
+                "Initialized. content disposition paths: {}, content disposition paths-pfx {}, content disposition excluded paths: {}. Enable Content Disposition for all paths is set to {}",
+                contentDispositionPaths,
+                contentDispositionPathsPfx,
+                contentDispositionExcludedPaths,
+                enableContentDispositionAllPaths);
     }
-
 
     @Override
     public void init(FilterConfig filterConfig) {
@@ -151,8 +153,8 @@ public class ContentDispositionFilter implements Filter {
     }
 
     @Override
-    public void doFilter(ServletRequest request, ServletResponse response,
-                         FilterChain chain) throws IOException, ServletException {
+    public void doFilter(ServletRequest request, ServletResponse response, FilterChain chain)
+            throws IOException, ServletException {
 
         final SlingHttpServletRequest slingRequest = (SlingHttpServletRequest) request;
         final SlingHttpServletResponse slingResponse = (SlingHttpServletResponse) response;
@@ -162,7 +164,7 @@ public class ContentDispositionFilter implements Filter {
         chain.doFilter(request, rewriterResponse);
     }
 
-    //---------- PRIVATE METHODS ---------
+    // ---------- PRIVATE METHODS ---------
 
     private static Set<String> getContentTypes(String contentTypes) {
         Set<String> contentTypesSet = new HashSet<>();
@@ -173,7 +175,7 @@ public class ContentDispositionFilter implements Filter {
         return contentTypesSet;
     }
 
-    //----------- INNER CLASSES ------------
+    // ----------- INNER CLASSES ------------
 
     protected class RewriterResponse extends SlingHttpServletResponseWrapper {
 
@@ -255,7 +257,6 @@ public class ContentDispositionFilter implements Filter {
                                         setContentDisposition(resource);
                                         break;
                                     }
-
                                 }
                             }
                         }
@@ -265,7 +266,7 @@ public class ContentDispositionFilter implements Filter {
             super.setContentType(type);
         }
 
-        //---------- PRIVATE METHODS ---------
+        // ---------- PRIVATE METHODS ---------
 
         private boolean setContentDisposition(Resource resource) {
             boolean contentDispositionAdded = false;
