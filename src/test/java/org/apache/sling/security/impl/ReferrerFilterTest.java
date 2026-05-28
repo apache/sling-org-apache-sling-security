@@ -1,35 +1,37 @@
 /*
- * Licensed to the Apache Software Foundation (ASF) under one or more
- * contributor license agreements.  See the NOTICE file distributed with
- * this work for additional information regarding copyright ownership.
- * The ASF licenses this file to You under the Apache License, Version 2.0
- * (the "License"); you may not use this file except in compliance with
- * the License.  You may obtain a copy of the License at
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *   http://www.apache.org/licenses/LICENSE-2.0
  *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
  */
 package org.apache.sling.security.impl;
 
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertTrue;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
+import javax.servlet.http.HttpServletRequest;
 
 import java.lang.annotation.Annotation;
 import java.util.Collections;
-
-import javax.servlet.http.HttpServletRequest;
 
 import org.apache.sling.security.impl.ReferrerFilterAmendmentImpl.Config;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
+
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 public class ReferrerFilterTest {
 
@@ -37,16 +39,21 @@ public class ReferrerFilterTest {
 
     @Before
     public void setup() {
-        ReferrerFilter.Config config = createConfiguration(false, new String[] { "relhost" },
-                new String[] { "http://([^.]*.)?abshost:80", "^app://.+" },
-                new String[] { "[a-zA-Z]*\\/[0-9]*\\.[0-9]*;Some-Agent\\s.*" },
-                new String[] { null, "/test_path" });
+        ReferrerFilter.Config config = createConfiguration(
+                false,
+                new String[] {"relhost"},
+                new String[] {"http://([^.]*.)?abshost:80", "^app://.+"},
+                new String[] {"[a-zA-Z]*\\/[0-9]*\\.[0-9]*;Some-Agent\\s.*"},
+                new String[] {null, "/test_path"});
         filter = new ReferrerFilter(config, Collections.emptyList());
     }
 
-    private static ReferrerFilter.Config createConfiguration(boolean allowEmpty, String[] allowHosts,
+    private static ReferrerFilter.Config createConfiguration(
+            boolean allowEmpty,
+            String[] allowHosts,
             String[] allowHostsRexexp,
-            String[] excludeAgentsRegexp, String[] excludePaths) {
+            String[] excludeAgentsRegexp,
+            String[] excludePaths) {
         return new ReferrerFilter.Config() {
             @Override
             public Class<? extends Annotation> annotationType() {
@@ -162,8 +169,8 @@ public class ReferrerFilterTest {
 
     @Test
     public void testExcludedPathNull() {
-        ReferrerFilter rf = new ReferrerFilter(createConfiguration(false, null, null, null, null),
-                Collections.emptyList());
+        ReferrerFilter rf =
+                new ReferrerFilter(createConfiguration(false, null, null, null, null), Collections.emptyList());
 
         assertFalse(rf.isValidRequest(getRequest(null, null, "/test_path")));
         assertFalse(rf.isValidRequest(getRequest(null, null, "/test_path/subtree")));
@@ -184,12 +191,12 @@ public class ReferrerFilterTest {
 
             @Override
             public String[] allow_hosts() {
-                return new String[]{"test.com"};
+                return new String[] {"test.com"};
             }
 
             @Override
             public String[] allow_hosts_regexp() {
-                return new String[]{".*test2.com.*"};
+                return new String[] {".*test2.com.*"};
             }
 
             @Override
@@ -199,12 +206,13 @@ public class ReferrerFilterTest {
 
             @Override
             public String[] exclude_paths() {
-                return new String[]{"/testpath2"};
+                return new String[] {"/testpath2"};
             }
-            
         });
-        ReferrerFilter rf = new ReferrerFilter(createConfiguration(false, null, new String[]{".*test1.com.*"}, null, null), Collections.singletonList(amendment));
-        
+        ReferrerFilter rf = new ReferrerFilter(
+                createConfiguration(false, null, new String[] {".*test1.com.*"}, null, null),
+                Collections.singletonList(amendment));
+
         assertTrue(rf.isValidRequest(getRequest(null, null, "/testpath2")));
         assertFalse(rf.isValidRequest(getRequest(null, null, "/test1path")));
 
@@ -213,9 +221,8 @@ public class ReferrerFilterTest {
         assertTrue(rf.isValidRequest(getRequest("http://test2.com:80", null, "/test_path")));
     }
 
-
     @Test
-    public void testAllowsWithOrigin(){
+    public void testAllowsWithOrigin() {
         HttpServletRequest request = getRequest(null);
         when(request.getHeader("origin")).thenReturn("http://abshost");
         Assert.assertEquals(true, filter.isValidRequest(request));
@@ -223,8 +230,8 @@ public class ReferrerFilterTest {
 
     @Test
     public void testAllowEmpty() {
-        ReferrerFilter rf = new ReferrerFilter(createConfiguration(true, null, null, null, null),
-                Collections.emptyList());
+        ReferrerFilter rf =
+                new ReferrerFilter(createConfiguration(true, null, null, null, null), Collections.emptyList());
 
         assertTrue(rf.isValidRequest(getRequest(null, null, "/test_path")));
         assertTrue(rf.isValidRequest(getRequest("", null, null)));
@@ -232,7 +239,8 @@ public class ReferrerFilterTest {
 
     @Test
     public void testIsBrowserRequest() {
-        String userAgent = "Mozilla/5.0;Some-Agent (Macintosh; Intel Mac OS X 10_12_5) AppleWebKit/603.2.4 (KHTML, like Gecko)";
+        String userAgent =
+                "Mozilla/5.0;Some-Agent (Macintosh; Intel Mac OS X 10_12_5) AppleWebKit/603.2.4 (KHTML, like Gecko)";
         assertFalse(filter.isBrowserRequest(getRequest(null, userAgent)));
         userAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_12_5) AppleWebKit/603.2.4 (KHTML, like Gecko)";
         assertTrue(filter.isBrowserRequest(getRequest(null, userAgent)));
