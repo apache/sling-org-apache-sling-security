@@ -6,22 +6,40 @@
 
 This module is part of the [Apache Sling](https://sling.apache.org) project.
 
-The Apache Sling Security module provides CSRF protection through a filter checking the referrer and a content disposition filter. This OSGi bundle can be used as a standalone bundle outside of Apache Sling - in that case only the referrer check functionality is available as the content disposition filter depends on the Apache Sling Framework
+The Apache Sling Security module provides:
 
-## Referrer Filter (CSRF Protection)
+- CSRF protection through the **Referrer Filter**
+- download hardening through the **Content Disposition Filter**
 
-Configuring the Apache Sling Referrer Filter involves setting up an OSGi configuration to manage which referrers are allowed to access your application. Here are some of the options:
+This OSGi bundle can be used as a standalone bundle outside of Apache Sling. In that case, only the Referrer Filter functionality is available, as the Content Disposition Filter depends on the Apache Sling API.
 
-- **Allow Empty**: Determines if requests with empty or missing referrer headers are allowed. This should typically be set to `false` for security reasons.
-- **Allow Hosts**: Specifies a list of allowed hosts for the referrer. These are matched against the full referrer URL.
-- **Allow Regexp Hosts**: Allows using regular expressions to match referrer hosts.
-- **Filter Methods**: Specifies which HTTP methods (e.g., POST, PUT, DELETE) are filtered by the Referrer Filter.
-- **Exclude Regexp User Agents**: Allows excluding certain user agents from referrer checks.
-- **Exclude Paths**: Specifies paths that should not be checked for referrers.
+## Requirements
 
-### Sample Configuration
+- Java 11+
+- Maven (the project inherits build plugins and checks from Sling parent POM v66)
 
-The filter can be configured through an OSGi configuration for the PID `org.apache.sling.security.impl.ReferrerFilter`. This is a sample configuration in JSON format:
+## Build and test
+
+- Build: `mvn clean install`
+- Build without tests: `mvn clean install -DskipTests`
+- Run tests: `mvn test`
+
+## Referrer Filter (CSRF protection)
+
+The Referrer Filter is registered as an OSGi HTTP Whiteboard `Preprocessor` and checks modification requests from browsers.
+
+Configuration PID: `org.apache.sling.security.impl.ReferrerFilter`
+
+Main configuration options:
+
+- **Allow Empty** (`allow.empty`)
+- **Allow Hosts** (`allow.hosts`)
+- **Allow Regexp Host** (`allow.hosts.regexp`)
+- **Filter Methods** (`filter.methods`)
+- **Exclude Regexp User Agent** (`exclude.agents.regexp`)
+- **Exclude Paths** (`exclude.paths`)
+
+### Sample configuration
 
 ```json
 {
@@ -34,7 +52,11 @@ The filter can be configured through an OSGi configuration for the PID `org.apac
 }
 ```
 
-In addition it is possible to amend the configuration by additional OSGi factory configurations for the factory PID `org.apache.sling.security.impl.ReferrerFilterAmendmentImpl`. This is a sample configuration in JSON format:
+It is also possible to amend this configuration with factory configurations for:
+
+- Factory PID: `org.apache.sling.security.impl.ReferrerFilterAmendmentImpl`
+
+### Sample amendment configuration
 
 ```json
 {
@@ -45,4 +67,29 @@ In addition it is possible to amend the configuration by additional OSGi factory
 }
 ```
 
+## Content Disposition Filter
 
+The Content Disposition Filter adds `Content-Disposition: attachment` for configured Sling resource paths (for `GET` and `HEAD` requests), with support for explicit path includes, prefix includes, exclusions, and optional all-path mode.
+
+Configuration PID: `org.apache.sling.security.impl.ContentDispositionFilter`
+
+Main configuration options:
+
+- **Included Resource Paths & Content Types** (`sling.content.disposition.paths`)
+- **Excluded Resource Paths** (`sling.content.disposition.excluded.paths`)
+- **Enable For All Resource Paths** (`sling.content.disposition.all.paths`)
+
+### Sample configuration
+
+```json
+{
+  "sling.content.disposition.paths": [
+    "/content/secure/*",
+    "/content/files/report.pdf:text/html,text/plain"
+  ],
+  "sling.content.disposition.excluded.paths": [
+    "/content/secure/preview"
+  ],
+  "sling.content.disposition.all.paths": false
+}
+```
