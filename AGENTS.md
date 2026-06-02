@@ -76,3 +76,10 @@ All production code lives under `org.apache.sling.security.impl`. There are no p
 - OSGi metatype XML descriptors are generated at compile time by annotation processing into `target/classes/OSGI-INF/`. Never edit them manually.
 - The parent POM (`sling-bundle-parent`) controls Spotless, RAT, baseline, and other plugin versions. Do not override plugin versions locally unless necessary.
 - `junit-addons:1.4` is a transitive test dependency with old Xerces — it is pulled in by JMock; avoid adding more dependencies on it.
+
+# Security
+
+<!-- sling-security-default:start -->
+The threat model for this project is https://github.com/apache/sling/blob/master/docs/threat-model.md .
+<!-- sling-security-default:end -->
+
