@@ -16,17 +16,24 @@ This OSGi bundle can be used as a standalone bundle outside of Apache Sling. In 
 ## Requirements
 
 - Java 11+
-- Maven (the project inherits build plugins and checks from Sling parent POM v66)
+- Maven
+
+The project inherits build plugins and checks from Sling parent POM `66`.
 
 ## Build and test
 
 - Build: `mvn clean install`
 - Build without tests: `mvn clean install -DskipTests`
 - Run tests: `mvn test`
+- Run Spotless check: `mvn spotless:check`
+- Apply Spotless formatting: `mvn spotless:apply`
+- Run RAT license checks: `mvn rat:check`
+- Run OSGi baseline checks: `mvn baseline:check`
 
 ## Referrer Filter (CSRF protection)
 
-The Referrer Filter is registered as an OSGi HTTP Whiteboard `Preprocessor` and checks modification requests from browsers.
+The Referrer Filter is registered as an OSGi HTTP Whiteboard `Preprocessor` and checks browser-originated modification requests.
+It validates the `referer` header and falls back to `origin` when `referer` is not present.
 
 Configuration PID: `org.apache.sling.security.impl.ReferrerFilter`
 
@@ -69,7 +76,9 @@ It is also possible to amend this configuration with factory configurations for:
 
 ## Content Disposition Filter
 
-The Content Disposition Filter adds `Content-Disposition: attachment` for configured Sling resource paths (for `GET` and `HEAD` requests), with support for explicit path includes, prefix includes, exclusions, and optional all-path mode.
+The Content Disposition Filter is a Sling request/forward filter that adds `Content-Disposition: attachment` for configured resource paths on `GET` and `HEAD` requests. It supports explicit path includes, prefix includes (`*` suffix), exclusions, and optional all-path mode.
+
+The header is only added for resources that contain `jcr:data` directly or below `jcr:content/jcr:data`.
 
 Configuration PID: `org.apache.sling.security.impl.ContentDispositionFilter`
 
