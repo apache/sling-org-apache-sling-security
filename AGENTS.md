@@ -1,13 +1,16 @@
 # Project Overview
 
-Apache Sling Security is an OSGi bundle for Apache Sling that provides two servlet filters: `ReferrerFilter` (a `Preprocessor` that blocks requests with missing or untrusted `Referer` headers to prevent CSRF) and `ContentDispositionFilter` (a Sling request/forward filter that forces `Content-Disposition: attachment` on responses for configured paths/content types). Components use OSGi R6/R7 declarative services annotations (`org.osgi.service.component.annotations`) with metatype configuration. The bundle targets Java 11 and is built with Maven.
+Apache Sling Security is an OSGi bundle for Apache Sling that provides two servlet filters: `ReferrerFilter` (an OSGi HTTP Whiteboard `Preprocessor` that blocks requests with missing or untrusted `Referer`/`Origin` headers to prevent CSRF) and `ContentDispositionFilter` (a Sling request/forward filter that forces `Content-Disposition: attachment` on responses for configured paths/content types). Components use OSGi R6/R7 declarative services annotations (`org.osgi.service.component.annotations`) with metatype configuration. The bundle targets Java 11 and is built with Maven.
+
+This bundle can run outside Apache Sling; in that setup only `ReferrerFilter` is applicable because `ContentDispositionFilter` depends on Sling API/resource model types.
 
 # Core Commands
 
 - **Build:** `mvn clean install`
 - **Build (skip tests):** `mvn clean install -DskipTests`
 - **Run full test suite:** `mvn test`
-- **Run a single test class:** `mvn test -Dtest=ReferrerFilterTest`
+- **Run ReferrerFilter tests:** `mvn test -Dtest=ReferrerFilterTest`
+- **Run ContentDispositionFilter tests:** `mvn test -Dtest=ContentDispositionFilterTest`
 - **Run a single test method:** `mvn test -Dtest=ReferrerFilterTest#testMethodName`
 - **Lint / format check (Spotless via parent POM):** `mvn spotless:check`
 - **Apply formatting:** `mvn spotless:apply`
@@ -40,6 +43,7 @@ All production code lives under `org.apache.sling.security.impl`. There are no p
 # Development Patterns & Constraints
 
 - **Java version:** 11 (source and target)
+- **Parent POM:** `org.apache.sling:sling-bundle-parent:66` controls shared plugin/version management.
 - **OSGi components:** Use `org.osgi.service.component.annotations` (`@Component`, `@Reference`, `@Activate`). Do NOT use Felix SCR annotations.
 - **Metatype config:** Define configuration interfaces with `@ObjectClassDefinition` / `@AttributeDefinition` in the same file as or alongside the component.
 - **Indentation:** 4 spaces (no tabs). Follow existing code style.
@@ -71,8 +75,10 @@ All production code lives under `org.apache.sling.security.impl`. There are no p
 # Gotchas
 
 - `ReferrerFilter` is registered as an OSGi `Preprocessor` (HTTP Whiteboard), not a standard Sling filter — it runs before Sling servlet resolution.
+- `ReferrerFilter` validates `referer` and falls back to `origin` when `referer` is missing.
 - The `bnd.bnd` sets `Require-Capability` for `osgi.http` version 1.x; updating the HTTP Whiteboard spec version requires updating this too.
 - `org.apache.sling.*` imports are marked `resolution:=optional` so the bundle can load even when Sling API is absent — keep this in mind when adding Sling API usage.
+- `ContentDispositionFilter` only adds the header for resources containing `jcr:data` directly or under `jcr:content/jcr:data`.
 - OSGi metatype XML descriptors are generated at compile time by annotation processing into `target/classes/OSGI-INF/`. Never edit them manually.
 - The parent POM (`sling-bundle-parent`) controls Spotless, RAT, baseline, and other plugin versions. Do not override plugin versions locally unless necessary.
 - `junit-addons:1.4` is a transitive test dependency with old Xerces — it is pulled in by JMock; avoid adding more dependencies on it.
@@ -82,4 +88,3 @@ All production code lives under `org.apache.sling.security.impl`. There are no p
 <!-- sling-security-default:start -->
 The threat model for this project is https://github.com/apache/sling/blob/master/docs/threat-model.md .
 <!-- sling-security-default:end -->
-

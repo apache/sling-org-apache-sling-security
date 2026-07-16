@@ -25,6 +25,9 @@ The project inherits build plugins and checks from Sling parent POM `66`.
 - Build: `mvn clean install`
 - Build without tests: `mvn clean install -DskipTests`
 - Run tests: `mvn test`
+- Run ReferrerFilter tests: `mvn test -Dtest=ReferrerFilterTest`
+- Run ContentDispositionFilter tests: `mvn test -Dtest=ContentDispositionFilterTest`
+- Run a single test method: `mvn test -Dtest=ReferrerFilterTest#testMethodName`
 - Run Spotless check: `mvn spotless:check`
 - Apply Spotless formatting: `mvn spotless:apply`
 - Run RAT license checks: `mvn rat:check`
@@ -34,6 +37,7 @@ The project inherits build plugins and checks from Sling parent POM `66`.
 
 The Referrer Filter is registered as an OSGi HTTP Whiteboard `Preprocessor` and checks browser-originated modification requests.
 It validates the `referer` header and falls back to `origin` when `referer` is not present.
+The filter is applied to configured modification methods and supports path and user-agent based exclusions.
 
 Configuration PID: `org.apache.sling.security.impl.ReferrerFilter`
 
@@ -76,9 +80,9 @@ It is also possible to amend this configuration with factory configurations for:
 
 ## Content Disposition Filter
 
-The Content Disposition Filter is a Sling request/forward filter that adds `Content-Disposition: attachment` for configured resource paths on `GET` and `HEAD` requests. It supports explicit path includes, prefix includes (`*` suffix), exclusions, and optional all-path mode.
+The Content Disposition Filter is a Sling request/forward filter that adds `Content-Disposition: attachment` for configured resource paths on `GET` and `HEAD` requests. It supports exact path includes, prefix includes (`*` suffix), exclusions, and optional all-path mode.
 
-The header is only added for resources that contain `jcr:data` directly or below `jcr:content/jcr:data`.
+The header is only added for resources that contain `jcr:data` directly or below `jcr:content/jcr:data`. Per-path content type lists are interpreted as excluded content types for that path.
 
 Configuration PID: `org.apache.sling.security.impl.ContentDispositionFilter`
 
