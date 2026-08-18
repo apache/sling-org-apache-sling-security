@@ -109,15 +109,32 @@ public class ReferrerFilter implements Preprocessor {
         boolean allow_empty() default false;
 
         /**
+         * Allow loopback and server NIC addresses (legacy behavior).
+         */
+        @AttributeDefinition(
+                name = "Allow Server Addresses (legacy)",
+                description =
+                        "If enabled, any request whose Referer/Origin claims to originate from this server itself "
+                                + "— \"localhost\", \"127.0.0.1\", \"[::1]\", or any IP bound to this server's own network "
+                                + "interfaces — is trusted on ANY port, for both \"http\" and \"https\". This also trusts every "
+                                + "other application running on this machine (or sharing its IP) on a different port, so leave "
+                                + "disabled unless you specifically need that trust. Well-behaved applications on \"localhost\" or "
+                                + "a locally assigned IP send a Referer/Origin matching their own origin (scheme, host AND port), "
+                                + "which is always allowed regardless of this setting — so they keep working correctly whether "
+                                + "this option is enabled or not. It should NOT be activated unless you have a specific, understood "
+                                + "need for it: it exists only for backwards compatibility with legacy setups.")
+        boolean allow_server_addresses() default false;
+
+        /**
          * Allow referrer uri hosts property.
          */
         @AttributeDefinition(
                 name = "Allow Hosts",
                 description =
-                        "List of allowed hosts for the referrer which are added to the list of default hosts. "
+                        "List of allowed hosts for the referrer. "
                                 + "It is matched against the full referrer URL in the format \"<scheme>://<host>:<port>\". "
-                                + "If port is 0, it is not taken into consideration. The default list contains all host names "
-                                + "and IPs bound to all NICs found in the system plus \"localhost\", \"127.0.0.1\", \"[::1]\" for protocols \"http\" and \"https\". "
+                                + "If port is 0, it is not taken into consideration. If \"Allow Server Addresses\" is enabled, all host names "
+                                + "and IPs bound to all NICs found in the system plus \"localhost\", \"127.0.0.1\", \"[::1]\" are added to this list for protocols \"http\" and \"https\". "
                                 + "If given value does not have a \":\" entries for both http and https are transparently generated.")
         String[] allow_hosts() default {};
 
@@ -173,7 +190,11 @@ public class ReferrerFilter implements Preprocessor {
     private final String[] excludedPaths;
 
     /**
-     * Create a default list of referrers
+     * Create the legacy list of default referrers (loopback plus every NIC-bound
+     * address, any port, http and https). Only used when the operator explicitly
+     * opts in via {@link Config#allow_server_addresses()}: these host names describe
+     * the origin of the page in the requesting user's browser, not this server, so
+     * they must not be trusted by default.
      */
     private Set<String> getDefaultAllowedReferrers() {
         final Set<String> referrers = new HashSet<>();
@@ -287,7 +308,8 @@ public class ReferrerFilter implements Preprocessor {
         this.excludedPaths = mergeValues(config.exclude_paths(), amendments, a -> a.excludePaths())
                 .toArray(new String[0]);
 
-        final Set<String> allowUriReferrers = getDefaultAllowedReferrers();
+        final Set<String> allowUriReferrers =
+                config.allow_server_addresses() ? getDefaultAllowedReferrers() : new HashSet<>();
         if (config.allow_hosts() != null) {
             allowUriReferrers.addAll(mergeValues(config.allow_hosts(), amendments, a -> a.allowHosts()));
         }
@@ -388,9 +410,11 @@ public class ReferrerFilter implements Preprocessor {
         }
 
         String referrer = request.getHeader("referer");
+        boolean fromOriginHeader = false;
         // use the origin if the referrer is not set
         if (referrer == null || referrer.trim().length() == 0) {
             referrer = request.getHeader("origin");
+            fromOriginHeader = true;
         }
 
         // check for missing/empty referrer
@@ -403,9 +427,35 @@ public class ReferrerFilter implements Preprocessor {
             }
             return this.allowEmpty;
         }
+        // The literal value "null" is the serialization of an opaque origin
+        // (RFC 6454): browsers send "Origin: null" for cross-site requests
+        // issued from sandboxed iframes, data: documents or pages with a
+        // no-referrer referrer policy. It explicitly marks an untrustworthy
+        // origin and must never be treated as a relative referrer, so it is
+        // handled exactly like a missing referrer (subject to allow.empty).
+        if ("null".equalsIgnoreCase(referrer.trim())) {
+            if (!this.allowEmpty) {
+                this.logger.info(
+                        "Rejected 'null' (opaque) origin/referrer for {} request to {}",
+                        request.getMethod(),
+                        request.getRequestURI());
+            }
+            return this.allowEmpty;
+        }
         // check for relative referrer - which is always allowed
         if (!referrer.contains(":/")) {
-            return true;
+            // only the Referer header may legitimately carry a relative
+            // value; the Origin header is always an absolute origin (or
+            // "null", handled above), so a non-absolute Origin is illegal
+            if (!fromOriginHeader) {
+                return true;
+            }
+            this.logger.info(
+                    "Rejected non-absolute origin header for {} request to {} : {}",
+                    request.getMethod(),
+                    request.getRequestURI(),
+                    referrer);
+            return false;
         }
 
         final HostInfo info = getHost(referrer);
@@ -419,9 +469,11 @@ public class ReferrerFilter implements Preprocessor {
             return false;
         }
 
-        // allow the request if the host name of the referrer is
-        // the same as the request's host name
-        if (info.host.equals(request.getServerName())) {
+        // allow the request if the referrer designates the request's own
+        // origin: scheme, host AND port must match.
+        if (info.host.equals(request.getServerName())
+                && info.scheme.equals(request.getScheme())
+                && info.port == normalizePort(request.getScheme(), request.getServerPort())) {
             return true;
         }
 
@@ -452,6 +504,21 @@ public class ReferrerFilter implements Preprocessor {
     @Override
     public void destroy() {
         // nothing to do
+    }
+
+    /**
+     * Normalize a port number by replacing an unknown port with the default
+     * port of the given scheme.
+     *
+     * @param scheme The scheme the port is used with
+     * @param port The port number
+     * @return the given port, or the scheme's default port if the given port is not positive
+     */
+    private static int normalizePort(final String scheme, final int port) {
+        if (port <= 0) {
+            return "https".equals(scheme) ? 443 : 80;
+        }
+        return port;
     }
 
     /**

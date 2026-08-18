@@ -54,6 +54,16 @@ public class ReferrerFilterTest {
             String[] allowHostsRexexp,
             String[] excludeAgentsRegexp,
             String[] excludePaths) {
+        return createConfiguration(allowEmpty, false, allowHosts, allowHostsRexexp, excludeAgentsRegexp, excludePaths);
+    }
+
+    private static ReferrerFilter.Config createConfiguration(
+            boolean allowEmpty,
+            boolean allowServerAddresses,
+            String[] allowHosts,
+            String[] allowHostsRexexp,
+            String[] excludeAgentsRegexp,
+            String[] excludePaths) {
         return new ReferrerFilter.Config() {
             @Override
             public Class<? extends Annotation> annotationType() {
@@ -63,6 +73,11 @@ public class ReferrerFilterTest {
             @Override
             public boolean allow_empty() {
                 return allowEmpty;
+            }
+
+            @Override
+            public boolean allow_server_addresses() {
+                return allowServerAddresses;
             }
 
             @Override
@@ -142,8 +157,10 @@ public class ReferrerFilterTest {
         assertTrue(filter.isValidRequest(getRequest("/relative/too")));
         assertTrue(filter.isValidRequest(getRequest("/relative/but/[illegal]")));
         assertFalse(filter.isValidRequest(getRequest("http://somehost")));
-        assertTrue(filter.isValidRequest(getRequest("http://localhost")));
-        assertTrue(filter.isValidRequest(getRequest("http://127.0.0.1")));
+        // loopback referrers identify the user's machine, not this server:
+        // they are no longer trusted by default
+        assertFalse(filter.isValidRequest(getRequest("http://localhost")));
+        assertFalse(filter.isValidRequest(getRequest("http://127.0.0.1")));
         assertFalse(filter.isValidRequest(getRequest("http://somehost/but/[illegal]")));
         assertTrue(filter.isValidRequest(getRequest("http://relhost")));
         assertTrue(filter.isValidRequest(getRequest("http://relhost:9001")));
@@ -221,11 +238,80 @@ public class ReferrerFilterTest {
         assertTrue(rf.isValidRequest(getRequest("http://test2.com:80", null, "/test_path")));
     }
 
+    private static HttpServletRequest getSameHostRequest(final String referrer, final String scheme, final int port) {
+        final HttpServletRequest request = getRequest(referrer);
+        when(request.getServerName()).thenReturn("myhost");
+        when(request.getScheme()).thenReturn(scheme);
+        when(request.getServerPort()).thenReturn(port);
+        return request;
+    }
+
+    @Test
+    public void testSameOriginReferrerAllowed() {
+        assertTrue(filter.isValidRequest(getSameHostRequest("https://myhost/page", "https", 443)));
+        assertTrue(filter.isValidRequest(getSameHostRequest("https://myhost:443/page", "https", 443)));
+        assertTrue(filter.isValidRequest(getSameHostRequest("http://myhost/page", "http", 80)));
+        assertTrue(filter.isValidRequest(getSameHostRequest("http://myhost:8080/page", "http", 8080)));
+    }
+
+    @Test
+    public void testSameHostDifferentSchemeRejected() {
+        // an http:// page (active-network attacker) must not vouch for the
+        // https deployment of the same host
+        assertFalse(filter.isValidRequest(getSameHostRequest("http://myhost/page", "https", 443)));
+    }
+
+    @Test
+    public void testSameHostDifferentPortRejected() {
+        // another service on a different port of the same host is a
+        // different origin
+        assertFalse(filter.isValidRequest(getSameHostRequest("https://myhost:8443/page", "https", 443)));
+        assertFalse(filter.isValidRequest(getSameHostRequest("http://myhost:8081/page", "http", 80)));
+    }
+
     @Test
     public void testAllowsWithOrigin() {
         HttpServletRequest request = getRequest(null);
         when(request.getHeader("origin")).thenReturn("http://abshost");
         Assert.assertEquals(true, filter.isValidRequest(request));
+    }
+
+    @Test
+    public void testRejectsNullOrigin() {
+        // browsers serialize an opaque origin (sandboxed iframe, data: document,
+        // no-referrer policy) as the literal string "null" - it must not be
+        // treated as an allowed relative referrer
+        HttpServletRequest request = getRequest(null);
+        when(request.getHeader("origin")).thenReturn("null");
+        assertFalse(filter.isValidRequest(request));
+    }
+
+    @Test
+    public void testRejectsNullReferrer() {
+        // the literal string "null" in the Referer header must not be treated
+        // as an allowed relative referrer either
+        assertFalse(filter.isValidRequest(getRequest("null")));
+        assertFalse(filter.isValidRequest(getRequest("NULL")));
+    }
+
+    @Test
+    public void testNullOriginFollowsAllowEmpty() {
+        // "null" carries the same information as a missing referrer and thus
+        // follows the allow.empty configuration
+        ReferrerFilter rf =
+                new ReferrerFilter(createConfiguration(true, null, null, null, null), Collections.emptyList());
+        HttpServletRequest request = getRequest(null);
+        when(request.getHeader("origin")).thenReturn("null");
+        assertTrue(rf.isValidRequest(request));
+    }
+
+    @Test
+    public void testRejectsNonAbsoluteOrigin() {
+        // the Origin header is always an absolute origin or "null"; a
+        // non-absolute value must not take the relative-referrer shortcut
+        HttpServletRequest request = getRequest(null);
+        when(request.getHeader("origin")).thenReturn("relative");
+        assertFalse(filter.isValidRequest(request));
     }
 
     @Test
@@ -235,6 +321,41 @@ public class ReferrerFilterTest {
 
         assertTrue(rf.isValidRequest(getRequest(null, null, "/test_path")));
         assertTrue(rf.isValidRequest(getRequest("", null, null)));
+    }
+
+    /**
+     * Regression: the Referer/Origin header describes the page in the *user's* browser, so a
+     * page served by a local application on the victim's machine (e.g. a dev server on
+     * 127.0.0.1:3000) must not be trusted by default to send state-changing requests (CSRF).
+     */
+    @Test
+    public void testServerAddressesNotTrustedByDefault() {
+        final ReferrerFilter rf =
+                new ReferrerFilter(createConfiguration(false, null, null, null, null), Collections.emptyList());
+
+        assertFalse(rf.isValidRequest(getRequest("http://localhost")));
+        assertFalse(rf.isValidRequest(getRequest("http://localhost:3000")));
+        assertFalse(rf.isValidRequest(getRequest("http://127.0.0.1:3000")));
+        assertFalse(rf.isValidRequest(getRequest("https://127.0.0.1")));
+
+        // same-host referrers are still allowed if the request originates from there
+        final HttpServletRequest request = getRequest("http://localhost:3000");
+        when(request.getServerName()).thenReturn("localhost");
+        when(request.getScheme()).thenReturn("http");
+        when(request.getServerPort()).thenReturn(3000);
+        assertTrue(rf.isValidRequest(request));
+    }
+
+    @Test
+    public void testServerAddressesOptIn() {
+        final ReferrerFilter rf =
+                new ReferrerFilter(createConfiguration(false, true, null, null, null, null), Collections.emptyList());
+
+        assertTrue(rf.isValidRequest(getRequest("http://localhost")));
+        assertTrue(rf.isValidRequest(getRequest("http://localhost:3000")));
+        assertTrue(rf.isValidRequest(getRequest("http://127.0.0.1:3000")));
+        assertTrue(rf.isValidRequest(getRequest("https://127.0.0.1")));
+        assertFalse(rf.isValidRequest(getRequest("http://somehost")));
     }
 
     @Test
