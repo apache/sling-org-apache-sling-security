@@ -87,37 +87,49 @@ public class ContentDispositionFilter implements Filter {
             for (String path : configuration.sling_content_disposition_paths()) {
                 path = path.trim();
                 if (path.length() > 0) {
-                    int idx = path.indexOf('*');
-                    int colonIdx = path.indexOf(":");
-
-                    if (colonIdx > -1 && colonIdx < idx) {
-                        // ':'  in paths is not allowed
-                        logger.info(
-                                "wildcard ('*') in content type is not allowed, but found content type with value '{}'",
-                                path.substring(colonIdx));
-                    } else {
-                        String p = null;
-                        if (idx >= 0) {
-                            if (idx > 0) {
-                                p = path.substring(0, idx);
-                                pfxs.add(p);
-                            } else {
-                                // we don't allow "*" - that would defeat the
-                                // purpose.
-                                logger.info("catch-all wildcard for paths not allowed.");
-                            }
+                    // Media types always contain '/' and never ':', whereas JCR resource paths
+                    // may contain ':' in namespaced segments (e.g. 'jcr:content'). The optional
+                    // content type list is therefore separated by the *last* ':' of the entry,
+                    // and only if the remainder actually parses as a list of media types.
+                    String entryPath = path;
+                    String contentTypesDefinition = null;
+                    final int colonIdx = path.lastIndexOf(':');
+                    if (colonIdx > -1) {
+                        final String candidate = path.substring(colonIdx + 1);
+                        if (isContentTypeList(candidate)) {
+                            entryPath = path.substring(0, colonIdx);
+                            contentTypesDefinition = candidate;
+                        } else if (candidate.indexOf('/') >= 0 || candidate.indexOf('*') >= 0) {
+                            // Neither a valid media type list nor a JCR name: reject the entry
+                            // loudly instead of guessing - a protection entry must never be
+                            // silently rewritten. This also rejects wildcard content types.
+                            logger.warn(
+                                    "Ignoring invalid content disposition entry '{}': the text after the last ':' ('{}') is neither a valid content type list nor a JCR name.",
+                                    path,
+                                    candidate);
+                            continue;
                         } else {
-                            if (colonIdx > -1) {
-                                p = path.substring(0, colonIdx);
-                            } else {
-                                p = path;
-                            }
-                            paths.add(p);
+                            logger.info(
+                                    "Content disposition entry '{}' contains ':' but no content type list; the complete entry is used as the resource path.",
+                                    path);
                         }
-                        if (colonIdx != -1 && p != null) {
-                            Set<String> contentTypes = getContentTypes(path.substring(colonIdx + 1));
-                            contentTypesMap.put(p, contentTypes);
+                    }
+                    final int idx = entryPath.indexOf('*');
+                    String p = null;
+                    if (idx >= 0) {
+                        if (idx > 0) {
+                            p = entryPath.substring(0, idx);
+                            pfxs.add(p);
+                        } else {
+                            // we don't allow the "*" wildcard, it would defeat the purpose.
+                            logger.info("catch-all wildcard for paths not allowed.");
                         }
+                    } else {
+                        p = entryPath;
+                        paths.add(p);
+                    }
+                    if (contentTypesDefinition != null && p != null) {
+                        contentTypesMap.put(p, getContentTypes(contentTypesDefinition));
                     }
                 }
             }
@@ -173,6 +185,32 @@ public class ContentDispositionFilter implements Filter {
             Collections.addAll(contentTypesSet, contentTypesArray);
         }
         return contentTypesSet;
+    }
+
+    /**
+     * Checks whether the provided value parses as a comma separated list of media
+     * types: each entry must contain exactly one '/', which must not be the first
+     * or last character, and must not contain ':' or '*'.
+     *
+     * @param value the text after the last ':' of a configuration entry
+     * @return {@code true} if the value is a valid content type list
+     */
+    private static boolean isContentTypeList(final String value) {
+        if (value.trim().isEmpty()) {
+            return false;
+        }
+        for (final String token : value.split(",")) {
+            final String type = token.trim();
+            final int slashIdx = type.indexOf('/');
+            if (slashIdx <= 0
+                    || slashIdx == type.length() - 1
+                    || type.indexOf('/', slashIdx + 1) != -1
+                    || type.indexOf(':') != -1
+                    || type.indexOf('*') != -1) {
+                return false;
+            }
+        }
+        return true;
     }
 
     // ----------- INNER CLASSES ------------

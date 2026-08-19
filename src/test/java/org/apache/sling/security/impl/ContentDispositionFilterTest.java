@@ -215,6 +215,59 @@ public class ContentDispositionFilterTest {
         Assert.assertEquals(2, contentDispositionExcludedPaths.size());
     }
 
+    /**
+     * A ':' in a JCR namespaced path segment (e.g. 'jcr:content') must not silently
+     * truncate the configured path (which would leave the intended path unprotected).
+     */
+    @SuppressWarnings("unchecked")
+    @Test
+    public void test_activator_namespaced_path() throws Throwable {
+        callActivateWithConfiguration(new String[] {"/content/site/file.svg/jcr:content"}, new String[] {""});
+        Set<String> contentDispositionPaths =
+                (Set<String>) PrivateAccessor.getField(contentDispositionFilter, "contentDispositionPaths");
+        Assert.assertEquals(1, contentDispositionPaths.size());
+        Assert.assertTrue(contentDispositionPaths.contains("/content/site/file.svg/jcr:content"));
+        String[] contentDispositionPathsPfx =
+                (String[]) PrivateAccessor.getField(contentDispositionFilter, "contentDispositionPathsPfx");
+        Assert.assertEquals(0, contentDispositionPathsPfx.length);
+        Map<String, Set<String>> contentTypesMapping =
+                (Map<String, Set<String>>) PrivateAccessor.getField(contentDispositionFilter, "contentTypesMapping");
+        Assert.assertEquals(0, contentTypesMapping.size());
+    }
+
+    @SuppressWarnings("unchecked")
+    @Test
+    public void test_activator_namespaced_path_with_content_types() throws Throwable {
+        callActivateWithConfiguration(
+                new String[] {"/content/site/file.svg/jcr:content:image/svg+xml,text/html"}, new String[] {""});
+        Set<String> contentDispositionPaths =
+                (Set<String>) PrivateAccessor.getField(contentDispositionFilter, "contentDispositionPaths");
+        Assert.assertEquals(1, contentDispositionPaths.size());
+        Assert.assertTrue(contentDispositionPaths.contains("/content/site/file.svg/jcr:content"));
+        Map<String, Set<String>> contentTypesMapping =
+                (Map<String, Set<String>>) PrivateAccessor.getField(contentDispositionFilter, "contentTypesMapping");
+        Assert.assertEquals(1, contentTypesMapping.size());
+        Set<String> mapping = contentTypesMapping.get("/content/site/file.svg/jcr:content");
+        Assert.assertEquals(2, mapping.size());
+        Assert.assertTrue(mapping.contains("image/svg+xml"));
+        Assert.assertTrue(mapping.contains("text/html"));
+    }
+
+    @SuppressWarnings("unchecked")
+    @Test
+    public void test_activator_invalid_content_type_list_rejected() throws Throwable {
+        callActivateWithConfiguration(new String[] {"/libs:text/html/*"}, new String[] {""});
+        Set<String> contentDispositionPaths =
+                (Set<String>) PrivateAccessor.getField(contentDispositionFilter, "contentDispositionPaths");
+        Assert.assertEquals(0, contentDispositionPaths.size());
+        String[] contentDispositionPathsPfx =
+                (String[]) PrivateAccessor.getField(contentDispositionFilter, "contentDispositionPathsPfx");
+        Assert.assertEquals(0, contentDispositionPathsPfx.length);
+        Map<String, Set<String>> contentTypesMapping =
+                (Map<String, Set<String>>) PrivateAccessor.getField(contentDispositionFilter, "contentTypesMapping");
+        Assert.assertEquals(0, contentTypesMapping.size());
+    }
+
     @SuppressWarnings("unchecked")
     @Test
     public void test_getContentTypes() throws Throwable {
