@@ -112,7 +112,7 @@ public class ReferrerFilter implements Preprocessor {
          * Allow loopback and server NIC addresses (legacy behavior).
          */
         @AttributeDefinition(
-                name = "Allow Server Addresses (legacy)",
+                name = "Allow Local Server Addresses (legacy)",
                 description =
                         "If enabled, any request whose Referer/Origin claims to originate from this server itself "
                                 + "— \"localhost\", \"127.0.0.1\", \"[::1]\", or any IP bound to this server's own network "
