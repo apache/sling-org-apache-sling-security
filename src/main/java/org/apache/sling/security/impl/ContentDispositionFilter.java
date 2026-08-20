@@ -22,10 +22,13 @@ import javax.servlet.Filter;
 import javax.servlet.FilterChain;
 import javax.servlet.FilterConfig;
 import javax.servlet.ServletException;
+import javax.servlet.ServletOutputStream;
 import javax.servlet.ServletRequest;
 import javax.servlet.ServletResponse;
 
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.PrintWriter;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -183,6 +186,8 @@ public class ContentDispositionFilter implements Filter {
 
         private static final String CONTENT_DISPOSTION_ATTACHMENT = "attachment";
 
+        private static final String CONTENT_TYPE = "Content-Type";
+
         private static final String PROP_JCR_DATA = "jcr:data";
 
         private static final String JCR_CONTENT_LEAF = "jcr:content";
@@ -197,6 +202,16 @@ public class ContentDispositionFilter implements Filter {
 
         private final Resource resource;
 
+        /**
+         * The content type this wrapper has already evaluated the
+         * Content-Disposition header for. The {@link #ATTRIBUTE_NAME} request
+         * attribute alone is not sufficient: the attribute is shared with the
+         * wrappers created for nested (forward) dispatches, and a value cached
+         * by an outer dispatch for a different resource must not suppress the
+         * header evaluation for this wrapper's own resource.
+         */
+        private String evaluatedContentType;
+
         public RewriterResponse(SlingHttpServletRequest request, SlingHttpServletResponse wrappedResponse) {
             super(wrappedResponse);
             this.request = request;
@@ -206,6 +221,7 @@ public class ContentDispositionFilter implements Filter {
         @Override
         public void reset() {
             request.removeAttribute(ATTRIBUTE_NAME);
+            this.evaluatedContentType = null;
             super.reset();
         }
 
@@ -217,56 +233,135 @@ public class ContentDispositionFilter implements Filter {
             if (supportedMethods.contains(request.getMethod())) {
                 String previousContentType = (String) request.getAttribute(ATTRIBUTE_NAME);
 
-                if (previousContentType != null && previousContentType.equals(type)) {
+                // only skip the evaluation if THIS wrapper has already
+                // evaluated the header decision for this content type: the
+                // request attribute may have been populated by the wrapper of
+                // another (outer) dispatch for a different resource
+                if (previousContentType != null
+                        && previousContentType.equals(type)
+                        && previousContentType.equals(this.evaluatedContentType)) {
                     super.setContentType(type);
                     return;
                 }
 
+                this.evaluatedContentType = type;
                 request.setAttribute(ATTRIBUTE_NAME, type);
 
-                String resourcePath = resource.getPath();
+                applyContentDisposition(type);
+            }
+            super.setContentType(type);
+        }
 
-                if (!contentDispositionExcludedPaths.contains(resourcePath)) {
+        /**
+         * Setting the "Content-Type" header is equivalent to calling
+         * {@link #setContentType(String)} and must be mediated the same way.
+         *
+         * @see javax.servlet.http.HttpServletResponseWrapper#setHeader(java.lang.String, java.lang.String)
+         */
+        @Override
+        public void setHeader(String name, String value) {
+            if (CONTENT_TYPE.equalsIgnoreCase(name)) {
+                this.setContentType(value);
+                return;
+            }
+            super.setHeader(name, value);
+        }
 
-                    if (enableContentDispositionAllPaths) {
-                        setContentDisposition(resource);
-                    } else {
+        /**
+         * @see javax.servlet.http.HttpServletResponseWrapper#addHeader(java.lang.String, java.lang.String)
+         */
+        @Override
+        public void addHeader(String name, String value) {
+            if (CONTENT_TYPE.equalsIgnoreCase(name)) {
+                this.setContentType(value);
+                return;
+            }
+            super.addHeader(name, value);
+        }
 
-                        boolean contentDispositionAdded = false;
-                        if (contentDispositionPaths.contains(resourcePath)) {
+        /**
+         * the content disposition decision is evaluated before the body can be written.
+         *
+         * @see javax.servlet.ServletResponseWrapper#getOutputStream()
+         */
+        @Override
+        public ServletOutputStream getOutputStream() throws IOException {
+            this.ensureContentDispositionApplied();
+            return super.getOutputStream();
+        }
 
-                            if (contentTypesMapping.containsKey(resourcePath)) {
-                                Set<String> exceptions = contentTypesMapping.get(resourcePath);
-                                if (!exceptions.contains(type)) {
-                                    contentDispositionAdded = setContentDisposition(resource);
-                                }
-                            } else {
+        /**
+         * @see javax.servlet.ServletResponseWrapper#getWriter()
+         */
+        @Override
+        public PrintWriter getWriter() throws IOException {
+            this.ensureContentDispositionApplied();
+            return super.getWriter();
+        }
+
+        // ---------- PRIVATE METHODS ---------
+
+        private void ensureContentDispositionApplied() {
+            if (supportedMethods.contains(request.getMethod()) && request.getAttribute(ATTRIBUTE_NAME) == null) {
+                applyContentDisposition(this.getContentType());
+            }
+        }
+
+        private void applyContentDisposition(final String type) {
+            String resourcePath = resource.getPath();
+
+            // A file's jcr:content child node carries the file's binary
+            // (jcr:data) directly and thus serves the very same bytes
+            // under a second address. Match such a resource against the
+            // configured exact path of the file itself as well, so that
+            // /path/file.ext/jcr:content cannot bypass an exact entry
+            // protecting /path/file.ext.
+            String configMatchPath = resourcePath;
+            if (configMatchPath.endsWith("/" + JCR_CONTENT_LEAF)) {
+                configMatchPath =
+                        configMatchPath.substring(0, configMatchPath.length() - JCR_CONTENT_LEAF.length() - 1);
+            }
+
+            if (!contentDispositionExcludedPaths.contains(resourcePath)) {
+
+                if (enableContentDispositionAllPaths) {
+                    setContentDisposition(resource);
+                } else {
+
+                    boolean contentDispositionAdded = false;
+                    if (contentDispositionPaths.contains(resourcePath)
+                            || contentDispositionPaths.contains(configMatchPath)) {
+
+                        String mappingKey =
+                                contentTypesMapping.containsKey(resourcePath) ? resourcePath : configMatchPath;
+                        if (contentTypesMapping.containsKey(mappingKey)) {
+                            Set<String> exceptions = contentTypesMapping.get(mappingKey);
+                            if (!exceptions.contains(type)) {
                                 contentDispositionAdded = setContentDisposition(resource);
                             }
+                        } else {
+                            contentDispositionAdded = setContentDisposition(resource);
                         }
-                        if (!contentDispositionAdded) {
-                            for (String path : contentDispositionPathsPfx) {
-                                if (resourcePath.startsWith(path)) {
-                                    if (contentTypesMapping.containsKey(path)) {
-                                        Set<String> exceptions = contentTypesMapping.get(path);
-                                        if (!exceptions.contains(type)) {
-                                            setContentDisposition(resource);
-                                            break;
-                                        }
-                                    } else {
+                    }
+                    if (!contentDispositionAdded) {
+                        for (String path : contentDispositionPathsPfx) {
+                            if (resourcePath.startsWith(path)) {
+                                if (contentTypesMapping.containsKey(path)) {
+                                    Set<String> exceptions = contentTypesMapping.get(path);
+                                    if (!exceptions.contains(type)) {
                                         setContentDisposition(resource);
                                         break;
                                     }
+                                } else {
+                                    setContentDisposition(resource);
+                                    break;
                                 }
                             }
                         }
                     }
                 }
             }
-            super.setContentType(type);
         }
-
-        // ---------- PRIVATE METHODS ---------
 
         private boolean setContentDisposition(Resource resource) {
             boolean contentDispositionAdded = false;
@@ -286,9 +381,22 @@ public class ContentDispositionFilter implements Filter {
                 } else {
                     Resource jcrContent = resource.getChild(JCR_CONTENT_LEAF);
                     if (jcrContent != null) {
-                        props = jcrContent.adaptTo(ValueMap.class);
-                        if (props != null && props.containsKey(PROP_JCR_DATA)) {
+                        ValueMap contentProps = jcrContent.adaptTo(ValueMap.class);
+                        if (contentProps != null && contentProps.containsKey(PROP_JCR_DATA)) {
                             jcrData = true;
+                        }
+                    }
+                    if (!jcrData && props == null) {
+                        // A resource that does not adapt to a ValueMap is not
+                        // a node but the shape of a property resource (e.g.
+                        // .../file/jcr:content/jcr:data), whose response body
+                        // is the property value itself. If it streams data,
+                        // treat it as jcr:data so the header decision fails
+                        // closed instead of silently skipping the header.
+                        try (InputStream is = resource.adaptTo(InputStream.class)) {
+                            jcrData = is != null;
+                        } catch (IOException e) {
+                            logger.debug("Failed to close InputStream adapted from resource {}", resource, e);
                         }
                     }
                 }

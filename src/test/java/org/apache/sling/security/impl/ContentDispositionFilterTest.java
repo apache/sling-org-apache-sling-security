@@ -18,6 +18,8 @@
  */
 package org.apache.sling.security.impl;
 
+import java.io.ByteArrayInputStream;
+import java.io.InputStream;
 import java.lang.annotation.Annotation;
 import java.util.Map;
 import java.util.Set;
@@ -723,6 +725,142 @@ public class ContentDispositionFilterTest {
     }
 
     /**
+     * A forward dispatch creates a new RewriterResponse for the forwarded-to
+     * resource. A content type cached in the request attribute by the wrapper
+     * of the outer dispatch (for a different, unprotected resource) must not
+     * suppress the Content-Disposition evaluation for the protected resource
+     * of this wrapper.
+     * @throws Throwable
+     */
+    @Test
+    public void test_doFilterForwardReevaluatesForNewResource() throws Throwable {
+        final SlingHttpServletRequest request = context.mock(SlingHttpServletRequest.class);
+        final SlingHttpServletResponse response = context.mock(SlingHttpServletResponse.class);
+        final Resource resource = context.mock(Resource.class, "resource");
+        final ValueMap properties = context.mock(ValueMap.class);
+        callActivateWithConfiguration(new String[] {"/content/usergenerated"}, new String[] {""});
+
+        final AtomicInteger counter = new AtomicInteger();
+
+        context.checking(new Expectations() {
+            {
+                allowing(request).getMethod();
+                will(returnValue("GET"));
+                allowing(response).containsHeader("Content-Disposition");
+                will(returnValue(false));
+                // the outer dispatch already cached the same content type for
+                // a different (unprotected) resource
+                allowing(request).getAttribute(RewriterResponse.ATTRIBUTE_NAME);
+                will(returnValue("text/html"));
+                allowing(request).setAttribute(RewriterResponse.ATTRIBUTE_NAME, "text/html");
+                allowing(request).getResource();
+                will(returnValue(resource));
+                allowing(resource).getPath();
+                will(returnValue("/content/usergenerated"));
+                allowing(resource).adaptTo(ValueMap.class);
+                will(returnValue(properties));
+                allowing(properties).containsKey(PROP_JCR_DATA);
+                will(returnValue(true));
+                allowing(response).setContentType("text/html");
+                // CONTENT DISPOSITION IS SET despite the cached content type
+                exactly(1).of(response).addHeader("Content-Disposition", "attachment");
+            }
+        });
+        final ContentDispositionFilter.RewriterResponse rewriterResponse =
+                contentDispositionFilter.new RewriterResponse(request, response) {
+                    @Override
+                    public void addHeader(String name, String value) {
+                        counter.incrementAndGet();
+                    }
+                };
+        rewriterResponse.setContentType("text/html");
+        Assert.assertEquals(1, counter.intValue());
+    }
+
+    /**
+     * An exact (non-wildcard) protected path must also cover the file's
+     * jcr:content child node, which serves the same binary (jcr:data) under a
+     * second address.
+     * @throws Throwable
+     */
+    @Test
+    public void test_doFilterExactPathCoversJcrContentChild() throws Throwable {
+        final SlingHttpServletRequest request = context.mock(SlingHttpServletRequest.class);
+        final SlingHttpServletResponse response = context.mock(SlingHttpServletResponse.class);
+        final Resource resource = context.mock(Resource.class, "resource");
+        final ValueMap properties = context.mock(ValueMap.class);
+        callActivateWithConfiguration(new String[] {"/content/usergenerated/file.svg"}, new String[] {""});
+
+        final AtomicInteger counter = new AtomicInteger();
+
+        context.checking(new Expectations() {
+            {
+                allowing(request).getMethod();
+                will(returnValue("GET"));
+                allowing(response).containsHeader("Content-Disposition");
+                will(returnValue(false));
+                allowing(request).getAttribute(RewriterResponse.ATTRIBUTE_NAME);
+                will(returnValue(null));
+                allowing(request).setAttribute(RewriterResponse.ATTRIBUTE_NAME, "image/svg+xml");
+                allowing(request).getResource();
+                will(returnValue(resource));
+                // the jcr:content child of the protected file serves the same bytes
+                allowing(resource).getPath();
+                will(returnValue("/content/usergenerated/file.svg/jcr:content"));
+                allowing(resource).adaptTo(ValueMap.class);
+                will(returnValue(properties));
+                allowing(properties).containsKey(PROP_JCR_DATA);
+                will(returnValue(true));
+                allowing(response).setContentType("image/svg+xml");
+                // CONTENT DISPOSITION IS SET
+                exactly(1).of(response).addHeader("Content-Disposition", "attachment");
+            }
+        });
+        final ContentDispositionFilter.RewriterResponse rewriterResponse =
+                contentDispositionFilter.new RewriterResponse(request, response) {
+                    @Override
+                    public void addHeader(String name, String value) {
+                        counter.incrementAndGet();
+                    }
+                };
+        rewriterResponse.setContentType("image/svg+xml");
+        Assert.assertEquals(1, counter.intValue());
+    }
+
+    /**
+     * The content-type exceptions configured for an exact protected path apply
+     * to the file's jcr:content child address as well.
+     * @throws Throwable
+     */
+    @Test
+    public void test_doFilterExactPathContentTypeMappingCoversJcrContentChild() throws Throwable {
+        final SlingHttpServletRequest request = context.mock(SlingHttpServletRequest.class);
+        final SlingHttpServletResponse response = context.mock(SlingHttpServletResponse.class);
+        final Resource resource = context.mock(Resource.class, "resource");
+        callActivateWithConfiguration(new String[] {"/content/usergenerated/file.svg:image/jpeg"}, new String[] {""});
+
+        context.checking(new Expectations() {
+            {
+                allowing(request).getMethod();
+                will(returnValue("GET"));
+                allowing(request).getAttribute(RewriterResponse.ATTRIBUTE_NAME);
+                will(returnValue(null));
+                allowing(request).setAttribute(RewriterResponse.ATTRIBUTE_NAME, "image/jpeg");
+                allowing(request).getResource();
+                will(returnValue(resource));
+                allowing(resource).getPath();
+                will(returnValue("/content/usergenerated/file.svg/jcr:content"));
+                allowing(response).setContentType("image/jpeg");
+                // CONTENT DISPOSITION MUST NOT SET (excepted content type)
+                never(response).addHeader("Content-Disposition", "attachment");
+            }
+        });
+        ContentDispositionFilter.RewriterResponse rewriterResponse =
+                contentDispositionFilter.new RewriterResponse(request, response);
+        rewriterResponse.setContentType("image/jpeg");
+    }
+
+    /**
      * Test repeated setContentType calls don't add multiple headers, case 1 resetting the same mimetype
      * @throws Throwable
      */
@@ -1395,6 +1533,8 @@ public class ContentDispositionFilterTest {
                 will(returnValue(null));
                 allowing(resource).getChild(JCR_CONTENT_LEAF);
                 will(returnValue(null));
+                allowing(resource).adaptTo(InputStream.class);
+                will(returnValue(null));
             }
         });
         final ContentDispositionFilter.RewriterResponse rewriterResponse =
@@ -1404,6 +1544,41 @@ public class ContentDispositionFilterTest {
                 rewriterResponse, "isJcrData", new Class[] {Resource.class}, new Object[] {resource});
 
         Assert.assertFalse(result);
+    }
+
+    /**
+     * A property resource (e.g. .../file/jcr:content/jcr:data) does not adapt
+     * to a ValueMap and has no jcr:content child, but its response body is the
+     * repository binary itself - it must be treated as jcr:data.
+     */
+    @Test
+    public void test_isJcrData8() throws Throwable {
+        callActivateWithConfiguration(new String[] {"/content/usergenerated"}, new String[] {"/content/usergenerated"});
+        final SlingHttpServletRequest request = context.mock(SlingHttpServletRequest.class);
+        final SlingHttpServletResponse response = context.mock(SlingHttpServletResponse.class);
+
+        final Resource resource = context.mock(Resource.class);
+        final InputStream stream = new ByteArrayInputStream(new byte[0]);
+
+        context.checking(new Expectations() {
+            {
+                allowing(request).getResource();
+                will(returnValue(resource));
+                allowing(resource).adaptTo(ValueMap.class);
+                will(returnValue(null));
+                allowing(resource).getChild(JCR_CONTENT_LEAF);
+                will(returnValue(null));
+                allowing(resource).adaptTo(InputStream.class);
+                will(returnValue(stream));
+            }
+        });
+        final ContentDispositionFilter.RewriterResponse rewriterResponse =
+                contentDispositionFilter.new RewriterResponse(request, response);
+
+        Boolean result = (Boolean) PrivateAccessor.invoke(
+                rewriterResponse, "isJcrData", new Class[] {Resource.class}, new Object[] {resource});
+
+        Assert.assertTrue(result);
     }
 
     @Test
@@ -1437,5 +1612,176 @@ public class ContentDispositionFilterTest {
                 rewriterResponse, "isJcrData", new Class[] {Resource.class}, new Object[] {resource});
 
         Assert.assertFalse(result);
+    }
+
+    /**
+     * Regression: setting the media type via setHeader("Content-Type", ...) is equivalent
+     * to setContentType(...) and must be mediated the same way (it used to bypass the filter).
+     */
+    @Test
+    public void test_setHeaderContentTypeIsMediated() throws Throwable {
+        final SlingHttpServletRequest request = context.mock(SlingHttpServletRequest.class);
+        final SlingHttpServletResponse response = context.mock(SlingHttpServletResponse.class);
+        final Resource resource = context.mock(Resource.class, "resource");
+        final ValueMap properties = context.mock(ValueMap.class);
+        callActivateWithConfiguration(new String[] {"/content/usergenerated"}, new String[] {""});
+
+        final AtomicInteger counter = new AtomicInteger();
+
+        context.checking(new Expectations() {
+            {
+                allowing(request).getMethod();
+                will(returnValue("GET"));
+                allowing(response).containsHeader("Content-Disposition");
+                will(returnValue(false));
+                allowing(request).getAttribute(RewriterResponse.ATTRIBUTE_NAME);
+                will(returnValue(null));
+                allowing(request).setAttribute(RewriterResponse.ATTRIBUTE_NAME, "image/svg+xml");
+                allowing(request).getResource();
+                will(returnValue(resource));
+                allowing(resource).getPath();
+                will(returnValue("/content/usergenerated"));
+                allowing(resource).adaptTo(ValueMap.class);
+                will(returnValue(properties));
+                allowing(properties).containsKey(PROP_JCR_DATA);
+                will(returnValue(true));
+                allowing(response).setContentType("image/svg+xml");
+            }
+        });
+        final ContentDispositionFilter.RewriterResponse rewriterResponse =
+                contentDispositionFilter.new RewriterResponse(request, response) {
+                    @Override
+                    public void addHeader(String name, String value) {
+                        counter.incrementAndGet();
+                    }
+                };
+        rewriterResponse.setHeader("Content-Type", "image/svg+xml");
+        Assert.assertEquals(1, counter.intValue());
+    }
+
+    /**
+     * Regression: the header name comparison must be case-insensitive.
+     */
+    @Test
+    public void test_setHeaderContentTypeIsMediatedCaseInsensitive() throws Throwable {
+        final SlingHttpServletRequest request = context.mock(SlingHttpServletRequest.class);
+        final SlingHttpServletResponse response = context.mock(SlingHttpServletResponse.class);
+        final Resource resource = context.mock(Resource.class, "resource");
+        final ValueMap properties = context.mock(ValueMap.class);
+        callActivateWithConfiguration(new String[] {"/content/usergenerated"}, new String[] {""});
+
+        final AtomicInteger counter = new AtomicInteger();
+
+        context.checking(new Expectations() {
+            {
+                allowing(request).getMethod();
+                will(returnValue("GET"));
+                allowing(response).containsHeader("Content-Disposition");
+                will(returnValue(false));
+                allowing(request).getAttribute(RewriterResponse.ATTRIBUTE_NAME);
+                will(returnValue(null));
+                allowing(request).setAttribute(RewriterResponse.ATTRIBUTE_NAME, "text/html");
+                allowing(request).getResource();
+                will(returnValue(resource));
+                allowing(resource).getPath();
+                will(returnValue("/content/usergenerated"));
+                allowing(resource).adaptTo(ValueMap.class);
+                will(returnValue(properties));
+                allowing(properties).containsKey(PROP_JCR_DATA);
+                will(returnValue(true));
+                allowing(response).setContentType("text/html");
+            }
+        });
+        final ContentDispositionFilter.RewriterResponse rewriterResponse =
+                contentDispositionFilter.new RewriterResponse(request, response) {
+                    @Override
+                    public void addHeader(String name, String value) {
+                        counter.incrementAndGet();
+                    }
+                };
+        rewriterResponse.setHeader("content-type", "text/html");
+        Assert.assertEquals(1, counter.intValue());
+    }
+
+    /**
+     * Regression: addHeader("Content-Type", ...) must be mediated as well.
+     */
+    @Test
+    public void test_addHeaderContentTypeIsMediated() throws Throwable {
+        final SlingHttpServletRequest request = context.mock(SlingHttpServletRequest.class);
+        final SlingHttpServletResponse response = context.mock(SlingHttpServletResponse.class);
+        final Resource resource = context.mock(Resource.class, "resource");
+        final ValueMap properties = context.mock(ValueMap.class);
+        callActivateWithConfiguration(new String[] {"/content/usergenerated"}, new String[] {""});
+
+        context.checking(new Expectations() {
+            {
+                allowing(request).getMethod();
+                will(returnValue("GET"));
+                allowing(response).containsHeader("Content-Disposition");
+                will(returnValue(false));
+                allowing(request).getAttribute(RewriterResponse.ATTRIBUTE_NAME);
+                will(returnValue(null));
+                allowing(request).setAttribute(RewriterResponse.ATTRIBUTE_NAME, "text/html");
+                allowing(request).getResource();
+                will(returnValue(resource));
+                allowing(resource).getPath();
+                will(returnValue("/content/usergenerated"));
+                allowing(resource).adaptTo(ValueMap.class);
+                will(returnValue(properties));
+                allowing(properties).containsKey(PROP_JCR_DATA);
+                will(returnValue(true));
+                allowing(response).setContentType("text/html");
+                // CONTENT DISPOSITION IS SET
+                exactly(1).of(response).addHeader("Content-Disposition", "attachment");
+            }
+        });
+        final ContentDispositionFilter.RewriterResponse rewriterResponse =
+                contentDispositionFilter.new RewriterResponse(request, response);
+        rewriterResponse.addHeader("Content-Type", "text/html");
+        context.assertIsSatisfied();
+    }
+
+    /**
+     * Regression: a response which never declares a content type (browsers would
+     * content-sniff it) must still get the Content-Disposition header before the
+     * body can be written.
+     */
+    @Test
+    public void test_typelessResponseIsMediatedOnOutput() throws Throwable {
+        final SlingHttpServletRequest request = context.mock(SlingHttpServletRequest.class);
+        final SlingHttpServletResponse response = context.mock(SlingHttpServletResponse.class);
+        final Resource resource = context.mock(Resource.class, "resource");
+        final ValueMap properties = context.mock(ValueMap.class);
+        callActivateWithConfiguration(new String[] {"/content/usergenerated"}, new String[] {""});
+
+        context.checking(new Expectations() {
+            {
+                allowing(request).getMethod();
+                will(returnValue("GET"));
+                allowing(request).getAttribute(RewriterResponse.ATTRIBUTE_NAME);
+                will(returnValue(null));
+                allowing(request).getResource();
+                will(returnValue(resource));
+                allowing(resource).getPath();
+                will(returnValue("/content/usergenerated"));
+                allowing(resource).adaptTo(ValueMap.class);
+                will(returnValue(properties));
+                allowing(properties).containsKey(PROP_JCR_DATA);
+                will(returnValue(true));
+                allowing(response).getContentType();
+                will(returnValue(null));
+                allowing(response).containsHeader("Content-Disposition");
+                will(returnValue(false));
+                allowing(response).getOutputStream();
+                will(returnValue(null));
+                // CONTENT DISPOSITION IS SET
+                exactly(1).of(response).addHeader("Content-Disposition", "attachment");
+            }
+        });
+        final ContentDispositionFilter.RewriterResponse rewriterResponse =
+                contentDispositionFilter.new RewriterResponse(request, response);
+        rewriterResponse.getOutputStream();
+        context.assertIsSatisfied();
     }
 }
