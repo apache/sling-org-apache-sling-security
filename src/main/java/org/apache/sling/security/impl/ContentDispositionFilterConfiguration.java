@@ -32,6 +32,9 @@ public @interface ContentDispositionFilterConfiguration {
             description =
                     "These resource paths are covered by the filter. "
                             + "Each entry is of the form '<path> [ : <excluded content type> {,<excluded content type>} ]'. "
+                            + "The path and the optional content type list are separated by the last ':' of the entry that is "
+                            + "followed by a valid content type list; a ':' inside a JCR namespaced path segment (e.g. 'jcr:content') "
+                            + "is treated as part of the path. "
                             + "Invalid entries are logged and ignored. <path> must be an absolute path and may contain a wildcard ('*') at the end, to match every resource path with the given path prefix.")
     String[] sling_content_disposition_paths() default {};
 
